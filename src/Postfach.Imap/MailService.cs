@@ -33,6 +33,17 @@ public sealed partial class MailService : IAsyncDisposable
         _connector = connector;
         _logger = logger;
         _poolOptions = poolOptions ?? new PoolOptions();
+        _accounts.Changed += id => _ = InvalidateAccountAsync(id);
+    }
+
+    /// <summary>Drops pooled connections and cached folders after an account was edited or removed.</summary>
+    public async Task InvalidateAccountAsync(string accountId)
+    {
+        _folderMaps.TryRemove(accountId, out _);
+        if (_pools.TryRemove(accountId, out var pool))
+        {
+            await pool.DisposeAsync();
+        }
     }
 
     public IAccountRegistry Accounts => _accounts;
@@ -153,6 +164,17 @@ public sealed partial class MailService : IAsyncDisposable
             all.Insert(0, client.Inbox);
         }
 
+        // Explicit per-account folder names win over everything else.
+        foreach (var (overrideRole, name) in account.FolderOverrides)
+        {
+            foreach (var key in special.Where(p => p.Value == overrideRole).Select(p => p.Key).ToList())
+            {
+                special.Remove(key);
+            }
+
+            special[name] = overrideRole;
+        }
+
         foreach (var folder in all)
         {
             var selectable = !folder.Attributes.HasFlag(FolderAttributes.NoSelect) && !folder.Attributes.HasFlag(FolderAttributes.NonExistent);
@@ -160,6 +182,12 @@ public sealed partial class MailService : IAsyncDisposable
             if (!isSpecial)
             {
                 role = FolderRoles.Detect(folder.Attributes, folder.FullName, folder.Name);
+                if (account.FolderOverrides.ContainsKey(role))
+                {
+                    // Another folder was explicitly assigned this role.
+                    role = FolderRole.None;
+                }
+
                 isSpecial = role != FolderRole.None && role != FolderRole.Inbox && FolderRoles.FromName(folder.Name) != role;
             }
 

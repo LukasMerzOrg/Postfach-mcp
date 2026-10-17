@@ -108,7 +108,7 @@ public class AccountConfigTests
     {
         var file = new ConfigFile
         {
-            Accounts = [new AccountDto { Id = id, Username = "u", Imap = new EndpointDto { Host = "h", Tls = tls == "none" && id == "bad:id" ? null : tls }, Secret = new SecretDto { Password = "pw" } }],
+            Accounts = [new AccountDto { Id = id, Username = "u", Imap = new EndpointDto { Host = "imap.example.com", Tls = tls == "none" && id == "bad:id" ? null : tls }, Secret = new SecretDto { Password = "pw" } }],
         };
         Assert.Throws<InvalidOperationException>(() => AccountConfigLoader.Build(file, null, _ => null));
     }

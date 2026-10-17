@@ -12,6 +12,7 @@ using Postfach.Server;
 using Postfach.Server.Configuration;
 using Postfach.Server.OAuth;
 using Postfach.Server.Security;
+using Postfach.Server.Setup;
 using Postfach.Server.Storage;
 using Postfach.Server.Tools;
 
@@ -45,7 +46,24 @@ builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton(oauth);
 builder.Services.AddSingleton(settings.Send);
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IAccountRegistry>(new AccountRegistry(config.Accounts));
+// YAML accounts plus accounts managed on /setup; the catalog rebuilds the registry when the setup page saves.
+var registry = new AccountRegistry(config.Accounts);
+builder.Services.AddSingleton(registry);
+builder.Services.AddSingleton<IAccountRegistry>(registry);
+builder.Services.AddSingleton(sp => new AccountStore(databasePath, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton(sp => new AccountCatalog(registry, sp.GetRequiredService<AccountStore>(), config.Accounts, protector, sp.GetRequiredService<ILogger<AccountCatalog>>()));
+if (protector is not null)
+{
+    builder.Services.AddSingleton(protector);
+}
+
+builder.Services.AddSingleton(sp => new AccountTester(sp.GetRequiredService<OAuthTokenSource>(), sp.GetRequiredService<ILoggerFactory>(), settings.InsecureTls));
+builder.Services.AddSingleton<DnsClient.ILookupClient>(new DnsClient.LookupClient(new DnsClient.LookupClientOptions { Timeout = TimeSpan.FromSeconds(3), Retries = 1, UseCache = true }));
+builder.Services.AddHttpClient<MailDiscovery>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(10);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("Postfach-autoconfig/1.0");
+});
 builder.Services.AddSingleton(new ApiTokenStore(apiTokens));
 builder.Services.AddSingleton(sp => new SqliteStore(databasePath, protector, sp.GetRequiredService<TimeProvider>()));
 if (oauth.Enabled)
@@ -91,7 +109,7 @@ var authentication = builder.Services
         o.Cookie.HttpOnly = true;
         o.Cookie.SameSite = SameSiteMode.Lax;
         o.Cookie.SecurePolicy = secureCookies ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
-        o.Cookie.Path = "/oauth";
+        o.Cookie.Path = "/";
         o.ExpireTimeSpan = TimeSpan.FromHours(12);
         o.SlidingExpiration = false;
         o.Events.OnRedirectToLogin = context =>
@@ -166,6 +184,7 @@ builder.Services
     .WithTools<MailTools>();
 
 var app = builder.Build();
+app.Services.GetRequiredService<AccountCatalog>().Reload();
 
 foreach (var warning in config.Warnings)
 {
@@ -195,7 +214,7 @@ if (settings.InsecureTls)
     app.Logger.LogWarning("POSTFACH_INSECURE_TLS is on: certificate validation is disabled for all IMAP/SMTP connections.");
 }
 
-app.Logger.LogInformation("Postfach starting with {Accounts} account(s); sending {Send}", config.Accounts.Count, settings.Send.AllowSend ? "ENABLED" : "disabled");
+app.Logger.LogInformation("Postfach starting with {Accounts} account(s); sending {Send}", registry.Accounts.Count, settings.Send.AllowSend ? "ENABLED" : "disabled");
 
 var origins = new HashSet<string>(OriginCheckMiddleware.DefaultOrigins.Concat(settings.AllowedOrigins), StringComparer.OrdinalIgnoreCase);
 if (settings.PublicUrl is { } publicUrl && Uri.TryCreate(publicUrl, UriKind.Absolute, out var publicUri))
@@ -238,12 +257,19 @@ app.MapGet("/readyz", (SqliteStore store, IAccountRegistry accounts) =>
     store.IsHealthy() && accounts.Accounts.Count > 0
         ? Results.Json(new { status = "ready", accounts = accounts.Accounts.Count })
         : Results.Json(new { status = "not_ready", database = store.IsHealthy(), accounts = accounts.Accounts.Count }, statusCode: 503));
-app.MapGet("/", () => Results.Text("Postfach MCP server. MCP endpoint: /mcp\n"));
+app.MapGet("/", () => Results.Redirect("/setup"));
+
+if (oauth.LocalLoginEnabled || oauth.OidcEnabled)
+{
+    app.MapOwnerLogin(oauth);
+}
 
 if (oauth.Enabled)
 {
     app.MapPostfachOAuth(oauth);
 }
+
+app.MapPostfachSetup();
 
 app.MapMcp("/mcp").RequireAuthorization().RequireRateLimiting("mcp");
 

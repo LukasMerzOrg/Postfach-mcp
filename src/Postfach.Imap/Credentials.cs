@@ -99,29 +99,53 @@ public sealed class OAuthTokenSource(HttpClient http, IRefreshTokenStore store, 
 /// <summary>Authentication shared by IMAP and SMTP clients.</summary>
 public static class MailAuthenticator
 {
-    public static async Task AuthenticateAsync(MailKit.MailService client, MailAccount account, OAuthTokenSource tokens, CancellationToken ct)
+    // Advertised by Exchange and some enterprise servers but unusable with a plain password from a container.
+    private static readonly string[] UnusableForPasswords = ["XOAUTH2", "OAUTHBEARER", "NTLM", "GSSAPI", "KERBEROS_V4", "KERBEROS_V5"];
+
+    // Challenge-response mechanisms that fail when the server stores hashed passwords; PLAIN/LOGIN are the fallback.
+    private static readonly string[] ChallengeResponse = ["SCRAM-SHA-256-PLUS", "SCRAM-SHA-256", "SCRAM-SHA-1-PLUS", "SCRAM-SHA-1", "CRAM-MD5", "DIGEST-MD5"];
+
+    public static async Task AuthenticateAsync(MailKit.MailService client, MailAccount account, OAuthTokenSource tokens, CancellationToken ct, bool plaintextAllowed = false)
     {
-        if (!client.IsSecure)
+        if (!client.IsSecure && !plaintextAllowed)
         {
-            // Never send credentials in the clear; TlsMode has no plaintext option, this is defence in depth.
+            // Never send credentials in the clear, except to a local bridge the operator configured with tls: none.
             throw new PostfachException(ErrorCodes.BackendUnavailable, "Refusing to authenticate over an unencrypted connection.");
         }
 
         switch (account.Secret.Kind)
         {
             case SecretKind.Password:
-                client.AuthenticationMechanisms.Remove("XOAUTH2");
-                client.AuthenticationMechanisms.Remove("OAUTHBEARER");
-                await client.AuthenticateAsync(new NetworkCredential(account.Username, account.Secret.Password), ct);
+                foreach (var mechanism in UnusableForPasswords)
+                {
+                    client.AuthenticationMechanisms.Remove(mechanism);
+                }
+
+                var credential = new NetworkCredential(account.Username, account.Secret.Password);
+                try
+                {
+                    await client.AuthenticateAsync(credential, ct);
+                }
+                catch (AuthenticationException) when (client.IsConnected && client.AuthenticationMechanisms.Overlaps(ChallengeResponse))
+                {
+                    // Retry once with PLAIN/LOGIN only (still over TLS).
+                    foreach (var mechanism in ChallengeResponse)
+                    {
+                        client.AuthenticationMechanisms.Remove(mechanism);
+                    }
+
+                    await client.AuthenticateAsync(credential, ct);
+                }
+
                 break;
             case SecretKind.OAuth2:
                 var token = await tokens.GetAccessTokenAsync(account, ct);
-                SaslMechanism mechanism = client.AuthenticationMechanisms.Contains("OAUTHBEARER")
+                SaslMechanism sasl = client.AuthenticationMechanisms.Contains("OAUTHBEARER")
                     ? new SaslMechanismOAuthBearer(account.Username, token)
                     : new SaslMechanismOAuth2(account.Username, token);
                 try
                 {
-                    await client.AuthenticateAsync(mechanism, ct);
+                    await client.AuthenticateAsync(sasl, ct);
                 }
                 catch (AuthenticationException)
                 {
@@ -133,6 +157,10 @@ public static class MailAuthenticator
         }
     }
 
-    public static SecureSocketOptions SocketOptions(TlsMode mode) =>
-        mode == TlsMode.Implicit ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
+    public static SecureSocketOptions SocketOptions(TlsMode mode) => mode switch
+    {
+        TlsMode.Implicit => SecureSocketOptions.SslOnConnect,
+        TlsMode.StartTls => SecureSocketOptions.StartTls,
+        _ => SecureSocketOptions.None,
+    };
 }

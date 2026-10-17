@@ -52,9 +52,11 @@ public class OAuthUnitTests
 
     [Theory]
     [InlineData("/oauth/authorize?client_id=x", "/oauth/authorize?client_id=x")]
-    [InlineData("https://evil.example/", "/oauth/authorize")]
-    [InlineData("//evil.example/oauth/authorize?", "/oauth/authorize")]
-    [InlineData(null, "/oauth/authorize")]
+    [InlineData("/setup/accounts/new?email=a%40b.c", "/setup/accounts/new?email=a%40b.c")]
+    [InlineData("https://evil.example/", "/setup")]
+    [InlineData("//evil.example/oauth/authorize?", "/setup")]
+    [InlineData("/setupx", "/setup")]
+    [InlineData(null, "/setup")]
     public void Return_urls_stay_local(string? value, string expected) =>
         Assert.Equal(expected, OAuthEndpoints.SafeReturnUrl(value));
 

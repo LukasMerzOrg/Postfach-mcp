@@ -1,7 +1,26 @@
 # Configuration
 
-Secrets and switches come from environment variables; accounts come from `postfach.yaml`
-(see [`postfach.example.yaml`](../postfach.example.yaml)).
+Secrets and switches come from environment variables. Mail accounts are added on the **`/setup` page** (stored
+encrypted in the database, changes apply immediately) or in `postfach.yaml` (see
+[`postfach.example.yaml`](../postfach.example.yaml); read-only in the UI, applied at startup). Both can be mixed.
+
+## The setup page
+
+`/setup` needs the owner login (`POSTFACH_OWNER_USERNAME` + `POSTFACH_OWNER_PASSWORD_HASH`, or OIDC) and
+`POSTFACH_SECRET_KEY`. Enter an email address and Postfach looks up the servers in this order: built-in presets
+for well-known providers, the domain's Mozilla autoconfig file, the Thunderbird ISPDB, the provider behind the
+domain's MX record (Google Workspace, Microsoft 365, iCloud, Fastmail, …), RFC 6186 SRV records, and finally probed
+guesses (`imap.<domain>`, `mail.<domain>`). Everything stays editable.
+
+*Test connection* signs in to IMAP (and SMTP, without sending), lists the folders with their detected roles and
+explains failures: unknown host, closed port, TLS/certificate problems, missing STARTTLS, rejected login (with
+the app-password hint). *Test and save* only stores working settings; *Save anyway* is offered after a failed test.
+
+For OAuth accounts (Gmail, Microsoft, or any OAuth 2 provider with endpoints you enter) the page stores the client
+ID/secret, then *Connect* runs the provider's sign-in in your browser and stores the refresh token encrypted.
+Register the redirect URI `<POSTFACH_PUBLIC_URL>/setup/oauth/callback` with the provider.
+
+Removing an account only removes it from Postfach; the mailbox is untouched.
 
 ## Environment variables
 
@@ -62,9 +81,16 @@ accounts:
       - { name: Me, email: me@example.com }
       - { name: Me (Verein), email: me@verein.example }
     sent_copy: auto          # append to Sent after sending, unless the provider does it (Gmail, M365)
+    # folders: { trash: Deleted }   # only when detection picks the wrong folder
 ```
 
-- There is no plaintext TLS mode. With `starttls`, a server that does not advertise STARTTLS is refused.
+Provider presets: `gmail`, `m365`, `outlook`, `icloud`, `fastmail`, `yahoo`, `aol`, `gmx`, `webde`, `mailboxorg`,
+`posteo`, `infomaniak`, `bluewin`, `hostpoint`, `zoho`, `protonbridge`.
+
+- With `starttls`, a server that does not advertise STARTTLS is refused (no downgrade).
+- `tls: none` exists only for local bridges (Proton Mail Bridge, DavMail, Hydroxide): the host must be `localhost`,
+  a private IP or a single-label container name. Postfach never sends a password unencrypted over the internet.
+- `folders: { sent: "INBOX.Gesendet", trash: "Deleted" }` overrides folder detection for unusual servers.
 - Every secret field accepts `<name>`, `<name>_env` or `<name>_enc`.
 - `identities` are the only allowed From addresses. Without them, the username is used if it is an address.
 
@@ -106,3 +132,4 @@ api_tokens:
 - `POST /mcp` — Streamable HTTP MCP endpoint (stateless), bearer auth (OAuth access token or API token).
 - `GET /healthz` — liveness.
 - `GET /readyz` — database reachable and at least one account configured.
+- `GET /setup` — account setup (owner login).

@@ -33,7 +33,7 @@ public sealed class SmtpSubmitter(OAuthTokenSource tokens, ILogger<SmtpSubmitter
                 throw new PostfachException(ErrorCodes.BackendUnavailable, "The SMTP server does not offer AUTH; Postfach only submits authenticated mail.");
             }
 
-            await MailAuthenticator.AuthenticateAsync(client, account, tokens, ct);
+            await MailAuthenticator.AuthenticateAsync(client, account, tokens, ct, plaintextAllowed: endpoint.Tls == TlsMode.None);
             // MailKit never transmits the Bcc header; Bcc recipients still get the message via RCPT TO.
             await client.SendAsync(message, ct);
             await client.DisconnectAsync(true, ct);

@@ -55,6 +55,18 @@ remove other messages marked `\Deleted`.
 - Consent shows the client name and redirect host; scopes are checkboxes and `mail.send`/`mail.delete` start
   unchecked. A refresh can narrow but never widen scopes.
 
+## Setup page
+
+- `/setup` requires the owner login; every form carries an antiforgery token; pages are `no-store` and cannot be
+  framed. Account changes are written to the audit log.
+- Passwords and OAuth client secrets are encrypted (AES-256-GCM) before they are stored and are never rendered back
+  into a page. A password typed before a failed test is carried to the next submit only as a time-limited
+  (30 min) Data Protection blob.
+- The provider "Connect" flow uses PKCE and a state value bound to an encrypted, 15-minute cookie; refresh tokens
+  are stored encrypted.
+- Autodiscovery only fetches HTTPS autoconfig documents (256 KB cap, 4 s timeout) and DNS records; it never sends
+  credentials. Unencrypted IMAP/SMTP is accepted only for local bridges (localhost, private IPs, container names).
+
 ## Secrets
 
 - Mailbox passwords and refresh tokens are read from env vars or `enc:v1:` values (AES-256-GCM, key derived with

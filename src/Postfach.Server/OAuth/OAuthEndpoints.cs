@@ -35,13 +35,33 @@ public static class OAuthEndpoints
         oauth.MapPost("/register", RegisterAsync).RequireRateLimiting("oauth");
         oauth.MapGet("/authorize", AuthorizeAsync).RequireRateLimiting("oauth");
         oauth.MapPost("/authorize", ConsentAsync).RequireRateLimiting("oauth");
-        oauth.MapPost("/login", LoginAsync).RequireRateLimiting("login");
-        oauth.MapGet("/login/oidc", (HttpContext context, string? return_url) =>
+        oauth.MapPost("/token", TokenAsync).RequireRateLimiting("oauth");
+        oauth.MapPost("/revoke", RevokeAsync).RequireRateLimiting("oauth");
+    }
+
+    /// <summary>Owner sign-in, used by the OAuth consent flow and the /setup page.</summary>
+    public static void MapOwnerLogin(this WebApplication app, OAuthSettings settings)
+    {
+        app.MapGet("/login", (HttpContext context, IAntiforgery antiforgery, string? return_url) =>
+        {
+            NoCache(context);
+            var tokens = antiforgery.GetAndStoreTokens(context);
+            return Results.Content(OAuthPages.Login(SafeReturnUrl(return_url), tokens.FormFieldName, tokens.RequestToken!, settings.LocalLoginEnabled, settings.OidcEnabled, null), "text/html");
+        });
+        app.MapPost("/oauth/login", LoginAsync).RequireRateLimiting("login");
+        app.MapGet("/oauth/login/oidc", (HttpContext context, string? return_url) =>
             settings.OidcEnabled
                 ? Results.Challenge(new AuthenticationProperties { RedirectUri = SafeReturnUrl(return_url) }, [OidcScheme])
                 : Results.NotFound());
-        oauth.MapPost("/token", TokenAsync).RequireRateLimiting("oauth");
-        oauth.MapPost("/revoke", RevokeAsync).RequireRateLimiting("oauth");
+        app.MapPost("/logout", async (HttpContext context, IAntiforgery antiforgery) =>
+        {
+            if (await IsValidFormAsync(context, antiforgery))
+            {
+                await context.SignOutAsync(OwnerScheme);
+            }
+
+            return Results.Redirect("/login?return_url=%2Fsetup");
+        });
     }
 
     private static object ProtectedResourceMetadata(OAuthSettings settings) => new Dictionary<string, object>
@@ -432,7 +452,7 @@ public static class OAuthEndpoints
         scope = string.Join(' ', issued.Scopes),
     });
 
-    private static async Task<bool> IsValidFormAsync(HttpContext context, IAntiforgery antiforgery)
+    internal static async Task<bool> IsValidFormAsync(HttpContext context, IAntiforgery antiforgery)
     {
         try
         {
@@ -445,11 +465,20 @@ public static class OAuthEndpoints
         }
     }
 
-    /// <summary>Only local authorize URLs are valid return targets (no open redirect).</summary>
-    internal static string SafeReturnUrl(string? value) =>
-        value is not null && value.StartsWith("/oauth/authorize?", StringComparison.Ordinal) && !value.Contains('\\') ? value : "/oauth/authorize";
+    /// <summary>Only local authorize and setup URLs are valid return targets (no open redirect).</summary>
+    internal static string SafeReturnUrl(string? value)
+    {
+        if (value is null || value.Contains('\\') || value.StartsWith("//", StringComparison.Ordinal))
+        {
+            return "/setup";
+        }
 
-    private static void NoCache(HttpContext context)
+        return value.StartsWith("/oauth/authorize?", StringComparison.Ordinal) || value == "/setup" || value.StartsWith("/setup/", StringComparison.Ordinal) || value.StartsWith("/setup?", StringComparison.Ordinal)
+            ? value
+            : "/setup";
+    }
+
+    internal static void NoCache(HttpContext context)
     {
         context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers.Pragma = "no-cache";

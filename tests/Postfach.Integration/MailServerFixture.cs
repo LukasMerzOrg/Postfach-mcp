@@ -28,6 +28,9 @@ public sealed class GreenMailFixture : IAsyncLifetime
 
     public int SmtpsPort => _container!.GetMappedPublicPort(3465);
 
+    /// <summary>Plain IMAP, used to exercise the local-bridge (tls: none) path.</summary>
+    public int ImapPlainPort => _container!.GetMappedPublicPort(3143);
+
     public async Task InitializeAsync()
     {
         _container = new ContainerBuilder(Image)
@@ -35,6 +38,7 @@ public sealed class GreenMailFixture : IAsyncLifetime
                 "-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.users.login=email "
                 + "-Dgreenmail.users=alice:secret@example.com,bob:secret@example.org,carol:secret@example.net")
             .WithPortBinding(3993, true)
+            .WithPortBinding(3143, true)
             .WithPortBinding(3465, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Starting GreenMail API server"))
             .Build();

@@ -33,24 +33,15 @@ printf '%s' 'a long owner password' | docker run -i --rm $IMG hash-password
 Use a password manager entry for the owner password; it is what you type on the consent page when connecting
 Claude.
 
-## 2. Create appdata and the account config
+## 2. Create the appdata folder
 
 ```sh
 mkdir -p /mnt/user/appdata/postfach
-nano /mnt/user/appdata/postfach/postfach.yaml     # start from deploy/unraid/postfach.example.yaml
 chown -R 99:100 /mnt/user/appdata/postfach
-chmod 600 /mnt/user/appdata/postfach/postfach.yaml
 ```
 
-Mailbox passwords: either reference a container variable (`password_env: POSTFACH_PRIVATE_PASSWORD`, filled in
-the template) or encrypt them so they never sit in plain text on the flash drive:
-
-```sh
-printf '%s' 'mailbox-app-password' | docker run -i --rm -e POSTFACH_SECRET_KEY='<key from step 1>' $IMG encrypt-secret
-# -> enc:v1:...   then in postfach.yaml:  password_enc: enc:v1:...
-```
-
-See [providers.md](providers.md) for Gmail / Microsoft 365 (OAuth) and iCloud (app password).
+Mail accounts are added later on the `/setup` page (step 6). A hand-written `postfach.yaml` in this folder is
+optional — see [`deploy/unraid/postfach.example.yaml`](../deploy/unraid/postfach.example.yaml) if you prefer files.
 
 ## 3. Add the container
 
@@ -69,13 +60,11 @@ postfach* and fill in:
 | Secret key | from step 1 |
 | Owner username / password hash | from step 1 — paste the hash as is; the Unraid form does not need `$` escaping |
 | Allow sending | `false` for now |
-| Mailbox password 1 | only if `postfach.yaml` uses `password_env: POSTFACH_PRIVATE_PASSWORD` |
 
 Keep the container name `postfach` — SWAG resolves it by that name. The template runs the container as
 `99:100` (nobody:users) and does not publish a port; SWAG talks to it over the Docker network on port 8080.
 
-After *Apply*, the container log should show `Postfach starting with 1 account(s)` and
-`OAuth authorization server enabled at https://postfach.example.com`.
+After *Apply*, the container log should show `OAuth authorization server enabled at https://postfach.example.com`.
 
 ## 4. Add the SWAG proxy config
 
@@ -86,7 +75,8 @@ docker restart swag
 ```
 
 The config disables buffering for `/mcp` (MCP responses can be server-sent events) and keeps `/healthz` and
-`/readyz` LAN-only. **Do not add Authelia/Authentik** to it: Postfach is its own OAuth server, and claude.ai must
+`/readyz` LAN-only. `/setup` is reachable from outside but protected by the owner login (rate-limited); if you want it
+LAN-only, uncomment the `location /setup` block in the conf. **Do not add Authelia/Authentik** to it: Postfach is its own OAuth server, and claude.ai must
 reach `/mcp`, `/oauth/*` and `/.well-known/*` without a login wall in front. SWAG's `proxy.conf` sends
 `X-Forwarded-For`; Postfach trusts it from Docker/private networks (`POSTFACH_TRUSTED_PROXIES`), so rate limits and
 the audit log see real client IPs.
@@ -100,7 +90,15 @@ curl -si -X POST https://postfach.example.com/mcp | grep -i www-authenticate
 # WWW-Authenticate: Bearer realm="postfach", resource_metadata="https://postfach.example.com/.well-known/..."
 ```
 
-## 6. Connect Claude
+## 6. Add your mail accounts
+
+Open `https://postfach.example.com/setup`, sign in with the owner login, enter an email address and press
+*Find settings*. Check the prefilled servers, enter the password (an **app password** for iCloud, Yahoo, Fastmail,
+GMX…), then *Test connection* / *Test and save*. For Gmail and Microsoft accounts follow the OAuth steps in
+[providers.md](providers.md) (redirect URI `https://postfach.example.com/setup/oauth/callback`), then
+*Save and connect*. Accounts are usable by Claude immediately — no restart.
+
+## 7. Connect Claude
 
 - **claude.ai** (web, then also mobile/Desktop): Settings → Connectors → *Add custom connector* → name
   `Postfach`, URL `https://postfach.example.com/mcp` → *Connect*. Sign in with the owner login and tick the
@@ -132,5 +130,7 @@ and tick `mail.send`. Every send still needs a draft preview that you approve in
 | claude.ai: "redirect URI not allowed" | Custom `POSTFACH_OAUTH_REDIRECT_ALLOWLIST` without the claude.ai callback |
 | Consent page says "form expired" | Opened over plain http or a different host than `Public URL`; cookies are `Secure` |
 | Login always fails | Hash copied incompletely (must start with `$argon2id$` and contain five `$` sections) |
-| `readyz` reports `accounts: 0` | `postfach.yaml` missing, not readable by 99:100, or a YAML error (see container log) |
+| `readyz` reports `accounts: 0` | No account added on `/setup` yet (or `postfach.yaml` unreadable by 99:100 / invalid) |
+| `/setup` says POSTFACH_SECRET_KEY is not set | Fill in *Secret key* in the template and apply |
+| Account shows a red error on `/setup` | Its stored secrets cannot be decrypted (secret key changed); remove and add it again |
 | `backend_unavailable` from tools | Mailbox host/port/password; check the container log for the IMAP error |

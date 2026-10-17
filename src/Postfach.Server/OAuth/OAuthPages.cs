@@ -21,6 +21,11 @@ internal static class OAuthPages
         :root{color-scheme:light dark;--fg:#1d1d1f;--muted:#666;--bg:#fafafa;--card:#fff;--line:#ddd;--accent:#2f5bd3;--warn:#a15c00}
         @media (prefers-color-scheme:dark){:root{--fg:#eee;--muted:#aaa;--bg:#141414;--card:#1e1e1e;--line:#333;--accent:#7aa2ff;--warn:#f0b35a}}
         body{font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:24px 16px}
+        main.wide{max-width:860px} table{width:100%;border-collapse:collapse;font-size:.95rem} th,td{text-align:left;padding:8px 6px;border-top:1px solid var(--line);vertical-align:top}
+        .ok{color:#1a7f37;font-weight:600} .grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px} @media (max-width:600px){.grid{grid-template-columns:1fr}}
+        fieldset{border:1px solid var(--line);border-radius:8px;margin:14px 0;padding:8px 14px} legend{font-weight:600;padding:0 4px}
+        select,textarea,input[type=number],input[type=email]{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;font:inherit}
+        .inline{display:inline} .inline button{flex:none;padding:6px 10px;font-size:.9rem} a{color:var(--accent)} .box{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:12px 0}
         main{max-width:440px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px}
         h1{font-size:1.3rem;margin:0 0 12px} p{margin:8px 0} .muted{color:var(--muted);font-size:.9rem}
         label{display:block;margin:10px 0} input[type=text],input[type=password]{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;font:inherit}
@@ -31,10 +36,10 @@ internal static class OAuthPages
         </style>
         """;
 
-    private static string E(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+    internal static string E(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
-    private static string Layout(string title, string body) =>
-        $"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>{E(title)}</title>{Style}</head><body><main>{body}</main></body></html>""";
+    internal static string Layout(string title, string body, bool wide = false) =>
+        $"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>{E(title)}</title>{Style}</head><body><main{(wide ? " class=\"wide\"" : string.Empty)}>{body}</main></body></html>""";
 
     public static string Login(string returnUrl, string antiforgeryField, string antiforgeryToken, bool local, bool oidc, string? error)
     {

@@ -12,6 +12,10 @@ Claude search, read, triage and draft email in any IMAP mailbox, with optional s
   counted, drafts to external addresses get exfiltration warnings.
 - **Works as a claude.ai custom connector:** built-in OAuth 2.1 authorization server (dynamic client registration,
   PKCE, refresh-token rotation, audience-bound tokens) with an Argon2id owner login or OIDC sign-in.
+- **Any IMAP account, set up in the browser:** the `/setup` page finds server settings from the email address
+  (provider presets, Mozilla autoconfig, Thunderbird ISPDB, MX, SRV), tests the connection with plain-language
+  diagnoses and stores secrets encrypted. Gmail and Microsoft accounts connect with one click via OAuth; local
+  bridges (Proton Mail Bridge, DavMail) work too.
 - One Docker container, SQLite volume, multiple mailboxes.
 
 ## Tools
@@ -38,25 +42,25 @@ Message ids are `account:folder:uidvalidity:uid`, so a reference that outlived a
 
 ```sh
 IMG=ghcr.io/lukasmerzorg/postfach-mcp
-docker run --rm $IMG generate-key                                    # -> POSTFACH_SECRET_KEY
-printf '%s' 'a long owner password' | docker run -i --rm $IMG hash-password   # -> POSTFACH_OWNER_PASSWORD_HASH
-mkdir data && cp postfach.example.yaml data/postfach.yaml            # edit accounts
+docker run --rm $IMG generate-key                                              # -> POSTFACH_SECRET_KEY
+printf '%s' 'a long owner password' | docker run -i --rm $IMG hash-password     # -> POSTFACH_OWNER_PASSWORD_HASH
 
 docker run -d --name postfach -p 8080:8080 -v "$PWD/data:/data" \
   -e POSTFACH_PUBLIC_URL=https://postfach.example.com \
   -e POSTFACH_SECRET_KEY=... \
   -e POSTFACH_OWNER_USERNAME=lukas -e POSTFACH_OWNER_PASSWORD_HASH='$argon2id$...' \
-  -e POSTFACH_PRIVATE_PASSWORD=app-password \
   $IMG
 ```
 
 Put it behind TLS — [Unraid + SWAG guide](docs/deploy-unraid.md), or [`deploy/`](deploy/) for Caddy + Compose — then:
 
-- **claude.ai / Claude apps:** Settings → Connectors → *Add custom connector* → `https://postfach.example.com/mcp`.
-  Claude registers itself, you sign in with the owner login and tick the permissions to grant.
-- **Claude Code:** `claude mcp add --transport http postfach https://postfach.example.com/mcp`, then `/mcp` to sign in.
-- **Static token instead of OAuth** (scripts, other clients): set `POSTFACH_API_TOKEN` (from `generate-token`) and
-  send `Authorization: Bearer <token>`.
+1. Open `https://postfach.example.com/setup`, sign in, enter an email address and follow the form: test, save.
+   (Accounts can also be defined in `postfach.yaml`; see [configuration](docs/configuration.md).)
+2. **claude.ai / Claude apps:** Settings → Connectors → *Add custom connector* → `https://postfach.example.com/mcp`.
+   Claude registers itself, you sign in with the owner login and tick the permissions to grant.
+3. **Claude Code:** `claude mcp add --transport http postfach https://postfach.example.com/mcp`, then `/mcp` to sign in.
+
+A static token (`POSTFACH_API_TOKEN`, from `generate-token`) works for clients without OAuth.
 
 Start read/draft-only. Enable sending only when you need it: `POSTFACH_ALLOW_SEND=true` **and** grant `mail.send`
 on the consent page.
@@ -90,9 +94,8 @@ Implemented against the spec's milestones:
   metadata, RFC 7591 registration with redirect allowlist, PKCE S256, consent with per-scope checkboxes,
   refresh rotation with replay detection, RFC 8707 audience binding, revocation, Argon2id or OIDC owner login.
 - **v0.4 sending** — server switch + scope + confirm token, limits, allowlist, audit, injection tests.
-- **v1.0 (partial)** — XOAUTH2/OAUTHBEARER mailbox auth with refresh-token rotation, provider presets,
-  multi-account, GHCR image workflow.
-- **Not yet:** the `/setup` page and the in-browser "Connect provider" flow for Gmail/Microsoft 365; until then
-  their refresh tokens are configured in `postfach.yaml` ([docs/providers.md](docs/providers.md)).
+- **v1.0** — `/setup` page with autodiscovery, connection test and in-browser "Connect" for Google, Microsoft or
+  any OAuth 2 provider; XOAUTH2/OAUTHBEARER with refresh-token rotation; 16 provider presets; local bridges;
+  multi-account; GHCR image. Still open: the MCP registry listing.
 
 MIT licensed.

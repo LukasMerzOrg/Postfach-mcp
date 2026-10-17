@@ -35,10 +35,27 @@ public sealed class ImapConnector(OAuthTokenSource tokens, ILogger<ImapConnector
         {
             // SecureSocketOptions.StartTls fails when the server does not advertise STARTTLS.
             await client.ConnectAsync(account.Imap.Host, account.Imap.Port, MailAuthenticator.SocketOptions(account.Imap.Tls), ct);
-            await MailAuthenticator.AuthenticateAsync(client, account, tokens, ct);
+            if (account.Imap.Tls == TlsMode.None)
+            {
+                logger.LogWarning("IMAP account {Account} uses an unencrypted connection to {Host}", account.Id, account.Imap.Host);
+            }
+
+            await MailAuthenticator.AuthenticateAsync(client, account, tokens, ct, plaintextAllowed: account.Imap.Tls == TlsMode.None);
             if (options.DisabledCapabilities != ImapCapabilities.None)
             {
                 client.Capabilities &= ~options.DisabledCapabilities;
+            }
+
+            if (client.Capabilities.HasFlag(ImapCapabilities.Id))
+            {
+                // Some providers (e.g. NetEase) refuse SELECT until the client identifies itself (RFC 2971).
+                try
+                {
+                    await client.IdentifyAsync(new ImapImplementation { Name = "Postfach", Version = typeof(ImapConnector).Assembly.GetName().Version?.ToString(3) }, ct);
+                }
+                catch (ImapCommandException)
+                {
+                }
             }
 
             if (client.Capabilities.HasFlag(ImapCapabilities.UTF8Accept))
