@@ -3,7 +3,7 @@ using Postfach.Server.Security;
 
 namespace Postfach.Server;
 
-/// <summary>Small admin commands: <c>generate-key</c>, <c>generate-token</c>, <c>hash-token</c>, <c>encrypt-secret</c>.</summary>
+/// <summary>Small admin commands: <c>generate-key</c>, <c>generate-token</c>, <c>hash-token</c>, <c>hash-password</c>, <c>encrypt-secret</c>, <c>revoke-oauth</c>.</summary>
 internal static class Cli
 {
     public static bool TryRun(string[] args, out int exitCode)
@@ -32,6 +32,28 @@ internal static class Cli
                 }
 
                 Console.WriteLine(Convert.ToHexString(ApiTokenStore.Hash(token.Trim())).ToLowerInvariant());
+                return true;
+            }
+            case "hash-password":
+            {
+                // stdin, so the password does not end up in shell history.
+                var password = Console.In.ReadToEnd().TrimEnd('\r', '\n');
+                if (password.Length < 12)
+                {
+                    Console.Error.WriteLine("usage: printf '%s' 'a-long-password' | postfach hash-password   (min. 12 characters)");
+                    exitCode = 2;
+                    return true;
+                }
+
+                Console.WriteLine(Postfach.Server.OAuth.PasswordHasher.Hash(password));
+                return true;
+            }
+            case "revoke-oauth":
+            {
+                var data = Environment.GetEnvironmentVariable("POSTFACH_DATA_DIR") ?? "/data";
+                var store = new Postfach.Server.OAuth.OAuthStore(Path.Combine(data, "postfach.db"), TimeProvider.System);
+                var count = store.RevokeAllAsync(CancellationToken.None).GetAwaiter().GetResult();
+                Console.WriteLine($"Revoked {count} OAuth token(s). Clients must sign in again.");
                 return true;
             }
             case "encrypt-secret":

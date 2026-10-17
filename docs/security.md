@@ -6,7 +6,7 @@ Postfach assumes Claude will sometimes be fooled and limits what a fooled Claude
 ## Sending: three independent gates
 
 1. **Server switch** — `POSTFACH_ALLOW_SEND=false` by default; it overrides any scope.
-2. **Scope** — the token must carry `mail.send` (not in the default grant).
+2. **Scope** — the token must carry `mail.send` (not in the default grant, unchecked on the consent page).
 3. **Content-bound confirm token** — `create_draft` / `update_draft` return an HMAC over
    *draft id + content hash + expiry* (15 min). `send_draft` re-fetches the draft from IMAP, recomputes the hash
    over From/To/Cc/Bcc, subject, bodies and attachments and rejects the token if anything changed — including an
@@ -40,11 +40,26 @@ Read tools open folders with `EXAMINE` and fetch with `BODY.PEEK`, so reading ne
 (`UID EXPUNGE`, UIDPLUS). Without MOVE and UIDPLUS, moves fail rather than issuing a plain `EXPUNGE` that could
 remove other messages marked `\Deleted`.
 
+## Client authorization (OAuth 2.1)
+
+- Discovery via RFC 9728/8414; clients register dynamically (RFC 7591) but only with redirect URIs on the
+  allowlist (claude.ai/claude.com callbacks and loopback by default). An unregistered redirect URI gets an error
+  page, never a redirect.
+- Authorization code flow with mandatory PKCE S256; codes live 5 minutes and are single-use; the redirect carries
+  `iss` (RFC 9207).
+- Tokens are bound to the `/mcp` resource (RFC 8707) and stored only as SHA-256 hashes. Access tokens last 1 hour.
+  Refresh tokens rotate on every use; replaying an old one revokes the whole grant.
+- The owner signs in with an Argon2id-hashed password (rate-limited, failures audited) or via OIDC with an explicit
+  allowlist. Login and consent forms carry antiforgery tokens, cookies are HttpOnly and scoped to `/oauth`, pages
+  send `no-store`, `frame-ancestors 'none'` and no referrer.
+- Consent shows the client name and redirect host; scopes are checkboxes and `mail.send`/`mail.delete` start
+  unchecked. A refresh can narrow but never widen scopes.
+
 ## Secrets
 
 - Mailbox passwords and refresh tokens are read from env vars or `enc:v1:` values (AES-256-GCM, key derived with
   HKDF from `POSTFACH_SECRET_KEY`). They never appear in tool I/O or logs.
-- API tokens are stored as SHA-256 hashes and compared in constant time.
+- API tokens, OAuth codes and tokens are stored as SHA-256 hashes and compared in constant time.
 - Credentials are only sent over TLS; STARTTLS downgrade is refused; certificate validation is always on unless
   `insecure_tls` / `POSTFACH_INSECURE_TLS` is set, which logs a warning on every connection.
 

@@ -38,6 +38,7 @@ public sealed class McpEndpointTests : IAsyncLifetime
         Environment.SetEnvironmentVariable("POSTFACH_API_TOKEN", Token);
         Environment.SetEnvironmentVariable("POSTFACH_API_TOKEN_SCOPES", "mail.read mail.draft");
         Environment.SetEnvironmentVariable("POSTFACH_ALLOW_SEND", "false");
+        Environment.SetEnvironmentVariable("POSTFACH_PUBLIC_URL", null);
         _factory = new WebApplicationFactory<Program>();
         _client = _factory.CreateClient();
     }

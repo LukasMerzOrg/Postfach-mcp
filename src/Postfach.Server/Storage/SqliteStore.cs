@@ -210,7 +210,7 @@ public sealed class SqliteStore : ISendLog, IRefreshTokenStore, IAuditLog
 }
 
 /// <summary>Daily retention cleanup.</summary>
-public sealed class RetentionService(SqliteStore store, ILogger<RetentionService> logger) : BackgroundService
+public sealed class RetentionService(SqliteStore store, ILogger<RetentionService> logger, Postfach.Server.OAuth.OAuthStore? oauth = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -220,6 +220,11 @@ public sealed class RetentionService(SqliteStore store, ILogger<RetentionService
             try
             {
                 var removed = await store.PruneAsync(stoppingToken);
+                if (oauth is not null)
+                {
+                    removed += await oauth.PruneAsync(stoppingToken);
+                }
+
                 logger.LogInformation("Retention cleanup removed {Rows} rows", removed);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

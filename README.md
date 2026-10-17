@@ -10,6 +10,8 @@ Claude search, read, triage and draft email in any IMAP mailbox, with optional s
 - **Token-efficient:** search returns ~60-token summary rows; bodies come as clean text on demand.
 - **Prompt-injection aware:** message content is returned in `untrusted_content`, hidden HTML text is stripped and
   counted, drafts to external addresses get exfiltration warnings.
+- **Works as a claude.ai custom connector:** built-in OAuth 2.1 authorization server (dynamic client registration,
+  PKCE, refresh-token rotation, audience-bound tokens) with an Argon2id owner login or OIDC sign-in.
 - One Docker container, SQLite volume, multiple mailboxes.
 
 ## Tools
@@ -35,25 +37,29 @@ Message ids are `account:folder:uidvalidity:uid`, so a reference that outlived a
 ## Quick start
 
 ```sh
-docker run --rm ghcr.io/lukasmerzorg/postfach-mcp generate-key      # -> POSTFACH_SECRET_KEY
-docker run --rm ghcr.io/lukasmerzorg/postfach-mcp generate-token    # -> POSTFACH_API_TOKEN
+IMG=ghcr.io/lukasmerzorg/postfach-mcp
+docker run --rm $IMG generate-key                                    # -> POSTFACH_SECRET_KEY
+printf '%s' 'a long owner password' | docker run -i --rm $IMG hash-password   # -> POSTFACH_OWNER_PASSWORD_HASH
 mkdir data && cp postfach.example.yaml data/postfach.yaml            # edit accounts
 
 docker run -d --name postfach -p 8080:8080 -v "$PWD/data:/data" \
-  -e POSTFACH_SECRET_KEY=... -e POSTFACH_API_TOKEN=... \
+  -e POSTFACH_PUBLIC_URL=https://postfach.example.com \
+  -e POSTFACH_SECRET_KEY=... \
+  -e POSTFACH_OWNER_USERNAME=lukas -e POSTFACH_OWNER_PASSWORD_HASH='$argon2id$...' \
   -e POSTFACH_PRIVATE_PASSWORD=app-password \
-  ghcr.io/lukasmerzorg/postfach-mcp
+  $IMG
 ```
 
-Put it behind TLS (see [`deploy/`](deploy/) for Caddy + Compose) and add `https://your-host/mcp` as an MCP server
-with header `Authorization: Bearer <token>`, e.g. in Claude Code:
+Put it behind TLS (see [`deploy/`](deploy/) for Caddy + Compose), then:
 
-```sh
-claude mcp add --transport http postfach https://postfach.example.com/mcp --header "Authorization: Bearer $TOKEN"
-```
+- **claude.ai / Claude apps:** Settings → Connectors → *Add custom connector* → `https://postfach.example.com/mcp`.
+  Claude registers itself, you sign in with the owner login and tick the permissions to grant.
+- **Claude Code:** `claude mcp add --transport http postfach https://postfach.example.com/mcp`, then `/mcp` to sign in.
+- **Static token instead of OAuth** (scripts, other clients): set `POSTFACH_API_TOKEN` (from `generate-token`) and
+  send `Authorization: Bearer <token>`.
 
-Start read/draft-only. Enable sending only when you need it: `POSTFACH_ALLOW_SEND=true` **and** a token with
-`mail.send`.
+Start read/draft-only. Enable sending only when you need it: `POSTFACH_ALLOW_SEND=true` **and** grant `mail.send`
+on the consent page.
 
 ## Documentation
 
@@ -77,14 +83,15 @@ probing, search compiler, folder roles), `src/Postfach.Mime` (body extraction, H
 
 Implemented against the spec's milestones:
 
-- **v0.1 read-only** — done (folders, search, message, thread, attachments; static bearer tokens; Dovecot + GreenMail CI).
-- **v0.2 organize + drafts** — done (flags, move, archive, delete to Trash, drafts).
-- **v0.4 sending** — done (server switch + scope + confirm token, limits, allowlist, audit, injection tests).
+- **v0.1 read-only** — folders, search, message, thread, attachments; static bearer tokens; Dovecot + GreenMail CI.
+- **v0.2 organize + drafts** — flags, move, archive, delete to Trash, drafts.
+- **v0.3 claude.ai connector** — OAuth 2.1 authorization server built in (no shared package): RFC 8414/9728
+  metadata, RFC 7591 registration with redirect allowlist, PKCE S256, consent with per-scope checkboxes,
+  refresh rotation with replay detection, RFC 8707 audience binding, revocation, Argon2id or OIDC owner login.
+- **v0.4 sending** — server switch + scope + confirm token, limits, allowlist, audit, injection tests.
 - **v1.0 (partial)** — XOAUTH2/OAUTHBEARER mailbox auth with refresh-token rotation, provider presets,
   multi-account, GHCR image workflow.
-- **Not yet:** the OAuth 2.1 authorization server for claude.ai custom connectors (v0.3, planned to come from the
-  shared `Merz.Mcp.Hosting` package with Termin), the `/setup` page and the in-browser "Connect provider" flow.
-  Until then, clients authenticate with static bearer tokens and OAuth refresh tokens are configured in
-  `postfach.yaml`.
+- **Not yet:** the `/setup` page and the in-browser "Connect provider" flow for Gmail/Microsoft 365; until then
+  their refresh tokens are configured in `postfach.yaml` ([docs/providers.md](docs/providers.md)).
 
 MIT licensed.
