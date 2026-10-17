@@ -1,0 +1,12 @@
+Authentication-Results: mx.example.com; spf=fail smtp.mailfrom=evil.example; dkim=none; dmarc=fail header.from=evil.example
+Authentication-Results: forged.example; spf=pass; dkim=pass; dmarc=pass
+From: "paypal.com Support" <security@evil.example>
+To: alice@example.com
+Subject: Your account is locked
+Date: Thu, 08 Oct 2026 11:00:00 +0000
+Message-ID: <phish-1@evil.example>
+List-Unsubscribe: <mailto:unsub@evil.example>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Verify your account now.

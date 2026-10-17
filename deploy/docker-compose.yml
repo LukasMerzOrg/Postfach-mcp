@@ -1,0 +1,28 @@
+# Postfach behind Caddy. Copy postfach.example.yaml to ./data/postfach.yaml and fill in .env first.
+services:
+  postfach:
+    image: ghcr.io/lukasmerzorg/postfach-mcp:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTFACH_PUBLIC_URL: https://postfach.example.com
+      POSTFACH_ALLOW_SEND: "false"        # start read/draft-only; see docs/security.md
+    volumes:
+      - ./data:/data
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - postfach
+
+volumes:
+  caddy_data:

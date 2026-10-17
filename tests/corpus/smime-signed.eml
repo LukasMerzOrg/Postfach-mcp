@@ -1,0 +1,19 @@
+From: Bank <notice@bank.example>
+To: alice@example.com
+Subject: Kontoauszug
+Date: Sun, 11 Oct 2026 07:00:00 +0200
+Message-ID: <smime-1@bank.example>
+MIME-Version: 1.0
+Content-Type: multipart/signed; protocol="application/pkcs7-signature"; micalg=sha-256; boundary="s1"
+
+--s1
+Content-Type: text/plain; charset=utf-8
+
+Ihr Kontoauszug ist bereit.
+--s1
+Content-Type: application/pkcs7-signature; name="smime.p7s"
+Content-Disposition: attachment; filename="smime.p7s"
+Content-Transfer-Encoding: base64
+
+MIAGCSqGSIb3DQEHAqCAMIACAQExDzANBglghkgBZQMEAgEFADCABgkqhkiG9w0BBwEAAA==
+--s1--

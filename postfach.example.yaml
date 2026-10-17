@@ -1,0 +1,48 @@
+# Postfach account configuration. Lives at /data/postfach.yaml (or POSTFACH_CONFIG).
+#
+# Secrets can be given three ways (first match wins):
+#   <name>_enc: enc:v1:...   encrypted with POSTFACH_SECRET_KEY (`postfach encrypt-secret`)
+#   <name>_env: VAR_NAME     read from an environment variable
+#   <name>: value            plain text (discouraged; logs a warning)
+
+accounts:
+  # Generic IMAP with an app password.
+  - id: private                     # used in message ids; no ':' or spaces
+    label: Privat
+    provider: infomaniak            # optional preset: gmail, m365, icloud, fastmail, infomaniak
+    username: lukas@example.ch
+    # imap: { host: mail.infomaniak.com, port: 993, tls: implicit }   # implicit | starttls
+    # smtp: { host: mail.infomaniak.com, port: 465, tls: implicit }
+    secret:
+      password_env: POSTFACH_PRIVATE_PASSWORD
+    identities:                     # allowed From addresses; the first is the default
+      - { name: Lukas Merz, email: lukas@example.ch }
+    sent_copy: auto                 # auto | always | never (append to Sent after sending)
+    # max_sends_per_day: 30
+    # insecure_tls: false           # only for self-signed homelab servers
+
+  # Gmail needs OAuth (XOAUTH2). Register your own Google OAuth client, see docs/providers.md.
+  # - id: gmail
+  #   provider: gmail
+  #   username: someone@gmail.com
+  #   secret:
+  #     oauth2:
+  #       client_id: 1234.apps.googleusercontent.com
+  #       client_secret_env: GMAIL_CLIENT_SECRET
+  #       refresh_token_enc: enc:v1:...
+
+  # Microsoft 365 (Basic Auth for IMAP/SMTP is disabled). Register an Entra app, see docs/providers.md.
+  # - id: work
+  #   provider: m365
+  #   username: lukas@contoso.com
+  #   secret:
+  #     oauth2:
+  #       tenant: contoso.onmicrosoft.com
+  #       client_id: 00000000-0000-0000-0000-000000000000
+  #       refresh_token_enc: enc:v1:...
+
+# Optional additional API tokens (only SHA-256 hashes are stored; `postfach generate-token`).
+# api_tokens:
+#   - name: claude-readonly
+#     sha256: 0123...                 # 64 hex chars
+#     scopes: [mail.read]

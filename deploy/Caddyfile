@@ -1,0 +1,3 @@
+postfach.example.com {
+	reverse_proxy postfach:8080
+}

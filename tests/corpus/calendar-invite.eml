@@ -1,0 +1,26 @@
+From: Kalender <cal@example.org>
+To: alice@example.com
+Subject: Einladung: Elternabend
+Date: Mon, 12 Oct 2026 10:00:00 +0200
+Message-ID: <invite-1@example.org>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="c1"
+
+--c1
+Content-Type: text/plain; charset=utf-8
+
+Sie sind eingeladen.
+--c1
+Content-Type: text/calendar; charset=utf-8; method=REQUEST; name="invite.ics"
+Content-Disposition: attachment; filename="invite.ics"
+
+BEGIN:VCALENDAR
+VERSION:2.0
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:elternabend-1
+DTSTART:20261020T180000Z
+SUMMARY:Elternabend
+END:VEVENT
+END:VCALENDAR
+--c1--
