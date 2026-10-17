@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Postfach.Imap;
 using Postfach.Send;
@@ -201,6 +202,29 @@ if (settings.PublicUrl is { } publicUrl && Uri.TryCreate(publicUrl, UriKind.Abso
 {
     origins.Add(publicUri.GetLeftPart(UriPartial.Authority));
 }
+
+// Behind SWAG/Caddy every request comes from the proxy; take the client IP and scheme from trusted proxies only,
+// so per-IP rate limits (login!) and audit entries see the real client.
+var forwarded = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = 1,
+};
+forwarded.KnownNetworks.Clear();
+forwarded.KnownProxies.Clear();
+foreach (var cidr in settings.TrustedProxies)
+{
+    if (System.Net.IPNetwork.TryParse(cidr, out var network))
+    {
+        forwarded.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(network.BaseAddress, network.PrefixLength));
+    }
+    else
+    {
+        app.Logger.LogWarning("Ignoring invalid POSTFACH_TRUSTED_PROXIES entry {Entry}", cidr);
+    }
+}
+
+app.UseForwardedHeaders(forwarded);
 
 // DNS-rebinding/CSRF protection for the MCP endpoint; the OAuth forms use antiforgery tokens instead.
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/mcp"),

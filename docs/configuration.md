@@ -24,6 +24,7 @@ Secrets and switches come from environment variables; accounts come from `postfa
 | `POSTFACH_MAX_RECIPIENTS` | `20` | Per message (To + Cc + Bcc). |
 | `POSTFACH_MAX_SENDS_PER_DAY` | `30` | Per account, rolling 24 h. `max_sends_per_day` in the account overrides it. |
 | `POSTFACH_ALLOWED_ORIGINS` | — | Extra allowed browser origins (`https://claude.ai` and `https://claude.com` are always allowed). |
+| `POSTFACH_TRUSTED_PROXIES` | loopback + `10/8`, `172.16/12`, `192.168/16` | CIDRs of reverse proxies whose `X-Forwarded-For`/`-Proto` are honoured (one hop). |
 | `POSTFACH_RATE_LIMIT_PER_MINUTE` | `120` | MCP requests per token (or IP) per minute. |
 | `POSTFACH_DATA_DIR` | `/data` | SQLite database and default config location. |
 | `POSTFACH_CONFIG` | `$POSTFACH_DATA_DIR/postfach.yaml` | Account configuration file. |

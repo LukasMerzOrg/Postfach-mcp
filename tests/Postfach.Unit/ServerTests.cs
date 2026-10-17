@@ -144,5 +144,7 @@ public class ApiTokenStoreTests
         Assert.False(settings.Send.AllowSend);
         Assert.Equal(20, settings.Send.MaxRecipients);
         Assert.Equal(30, settings.Send.MaxSendsPerDay);
+        Assert.Contains("172.16.0.0/12", settings.TrustedProxies);
+        Assert.Equal(["10.1.0.0/16"], PostfachSettings.FromEnvironment(k => k == "POSTFACH_TRUSTED_PROXIES" ? "10.1.0.0/16" : null).TrustedProxies);
     }
 }

@@ -25,6 +25,12 @@ public sealed class PostfachSettings
 
     public int RequestsPerMinute { get; init; } = 120;
 
+    /// <summary>Networks whose X-Forwarded-For/-Proto headers are trusted (the reverse proxy, e.g. SWAG on a Docker network).</summary>
+    public IReadOnlyList<string> TrustedProxies { get; init; } = DefaultTrustedProxies;
+
+    public static readonly IReadOnlyList<string> DefaultTrustedProxies =
+        ["127.0.0.1/32", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"];
+
     public static PostfachSettings FromEnvironment(Func<string, string?> env)
     {
         var data = env("POSTFACH_DATA_DIR") ?? "/data";
@@ -38,6 +44,7 @@ public sealed class PostfachSettings
             ApiToken = env("POSTFACH_API_TOKEN"),
             ApiTokenScopes = SplitList(env("POSTFACH_API_TOKEN_SCOPES")) is { Count: > 0 } scopes ? scopes : Scopes.DefaultGrant,
             AllowedOrigins = SplitList(env("POSTFACH_ALLOWED_ORIGINS")),
+            TrustedProxies = SplitList(env("POSTFACH_TRUSTED_PROXIES")) is { Count: > 0 } proxies ? proxies : DefaultTrustedProxies,
             RequestsPerMinute = int.TryParse(env("POSTFACH_RATE_LIMIT_PER_MINUTE"), out var rpm) && rpm > 0 ? rpm : 120,
             Send = new SendOptions
             {

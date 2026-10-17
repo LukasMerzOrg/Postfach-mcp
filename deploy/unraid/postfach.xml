@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<!--
+  Unraid Docker template for Postfach.
+  Install: copy to /boot/config/plugins/dockerMan/templates-user/my-postfach.xml,
+  then Docker → Add Container → Template: postfach. See docs/deploy-unraid.md.
+-->
+<Container version="2">
+  <Name>postfach</Name>
+  <Repository>ghcr.io/lukasmerzorg/postfach-mcp:latest</Repository>
+  <Registry>https://github.com/LukasMerzOrg/Postfach-mcp/pkgs/container/postfach-mcp</Registry>
+  <Network>proxynet</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/LukasMerzOrg/Postfach-mcp/issues</Support>
+  <Project>https://github.com/LukasMerzOrg/Postfach-mcp</Project>
+  <Overview>Postfach: a self-hosted remote MCP server that lets Claude search, read, triage and draft email in your IMAP mailboxes, with optional sending. Publish it through SWAG at https://postfach.yourdomain and add https://postfach.yourdomain/mcp as a custom connector in claude.ai. Accounts are configured in /data/postfach.yaml.</Overview>
+  <Category>Productivity: Tools: Network:Messenger</Category>
+  <WebUI/>
+  <TemplateURL/>
+  <Icon/>
+  <!-- Run as nobody:users so files in appdata get Unraid's usual ownership. -->
+  <ExtraParams>--user 99:100</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>SWAG (or another TLS reverse proxy) on the same custom Docker network. The network name above (proxynet) must match SWAG's.</Requires>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/postfach" Mode="rw" Description="postfach.yaml, SQLite database (audit, OAuth clients/tokens) and cookie keys. Back this up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/postfach</Config>
+  <Config Name="Public URL" Target="POSTFACH_PUBLIC_URL" Default="" Mode="" Description="The HTTPS URL SWAG serves, without trailing slash, e.g. https://postfach.example.com. Used as OAuth issuer; the MCP endpoint is this URL + /mcp." Type="Variable" Display="always" Required="true" Mask="false">https://postfach.example.com</Config>
+  <Config Name="Secret key" Target="POSTFACH_SECRET_KEY" Default="" Mode="" Description="32 random bytes, base64. Generate: docker run --rm ghcr.io/lukasmerzorg/postfach-mcp generate-key. Keep a copy outside the server: without it, encrypted secrets cannot be read." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Owner username" Target="POSTFACH_OWNER_USERNAME" Default="" Mode="" Description="Login on the OAuth consent page when connecting Claude." Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Owner password hash" Target="POSTFACH_OWNER_PASSWORD_HASH" Default="" Mode="" Description="Argon2id hash (starts with $argon2id$). Generate: printf '%s' 'your long password' | docker run -i --rm ghcr.io/lukasmerzorg/postfach-mcp hash-password" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Allow sending" Target="POSTFACH_ALLOW_SEND" Default="false" Mode="" Description="Server-side send switch. Leave false to start read/draft-only; drafts can still be sent from your mail client." Type="Variable" Display="always" Required="true" Mask="false">false</Config>
+  <Config Name="Send allowlist" Target="POSTFACH_SEND_ALLOWLIST" Default="" Mode="" Description="Optional: only allow these recipients, e.g. *@family.ch,boss@work.ch" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Mailbox password 1" Target="POSTFACH_PRIVATE_PASSWORD" Default="" Mode="" Description="Referenced from postfach.yaml as password_env: POSTFACH_PRIVATE_PASSWORD. Rename or add more variables as needed, or use password_enc in postfach.yaml instead (values here are stored in plain text on the flash drive)." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Trusted proxies" Target="POSTFACH_TRUSTED_PROXIES" Default="127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" Mode="" Description="Networks whose X-Forwarded-For is trusted (SWAG's Docker network). The default covers Docker bridge networks." Type="Variable" Display="advanced" Required="false" Mask="false">127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16</Config>
+  <Config Name="Static API token" Target="POSTFACH_API_TOKEN" Default="" Mode="" Description="Optional bearer token for clients without OAuth (generate-token)." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Static API token scopes" Target="POSTFACH_API_TOKEN_SCOPES" Default="mail.read mail.organize mail.draft" Mode="" Description="Scopes of the static token." Type="Variable" Display="advanced" Required="false" Mask="false">mail.read mail.organize mail.draft</Config>
+  <Config Name="Max sends per day" Target="POSTFACH_MAX_SENDS_PER_DAY" Default="30" Mode="" Description="Per account, rolling 24 hours." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="Timezone" Target="TZ" Default="Europe/Zurich" Mode="" Description="Container timezone (logs only; mail dates keep their own offsets)." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Zurich</Config>
+  <Config Name="LAN port (optional)" Target="8080" Default="" Mode="tcp" Description="Not needed with SWAG on the same network. Only map it for testing on the LAN; never forward it on your router." Type="Port" Display="advanced" Required="false" Mask="false"></Config>
+</Container>

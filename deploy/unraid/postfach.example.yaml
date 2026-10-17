@@ -1,0 +1,14 @@
+# /mnt/user/appdata/postfach/postfach.yaml  (inside the container: /data/postfach.yaml)
+# chown 99:100 and chmod 600 this file. Full reference: postfach.example.yaml in the repository root.
+accounts:
+  - id: private
+    label: Privat
+    provider: infomaniak          # or: fastmail, icloud, gmail, m365 — or set imap/smtp below
+    username: you@example.ch
+    # imap: { host: imap.example.ch, port: 993, tls: implicit }
+    # smtp: { host: smtp.example.ch, port: 587, tls: starttls }
+    secret:
+      password_env: POSTFACH_PRIVATE_PASSWORD   # the "Mailbox password 1" field of the Unraid template
+      # password_enc: enc:v1:...                # alternative: encrypted, see docs/deploy-unraid.md
+    identities:
+      - { name: Your Name, email: you@example.ch }

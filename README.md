@@ -50,7 +50,7 @@ docker run -d --name postfach -p 8080:8080 -v "$PWD/data:/data" \
   $IMG
 ```
 
-Put it behind TLS (see [`deploy/`](deploy/) for Caddy + Compose), then:
+Put it behind TLS — [Unraid + SWAG guide](docs/deploy-unraid.md), or [`deploy/`](deploy/) for Caddy + Compose — then:
 
 - **claude.ai / Claude apps:** Settings → Connectors → *Add custom connector* → `https://postfach.example.com/mcp`.
   Claude registers itself, you sign in with the owner login and tick the permissions to grant.
@@ -63,6 +63,7 @@ on the consent page.
 
 ## Documentation
 
+- [Deploying on Unraid behind SWAG](docs/deploy-unraid.md)
 - [Configuration](docs/configuration.md) — environment variables, `postfach.yaml`, secrets, CLI
 - [Providers](docs/providers.md) — Gmail, Microsoft 365, iCloud, Fastmail, Infomaniak, Dovecot
 - [Security](docs/security.md) — threat model, the three send gates, prompt-injection handling
