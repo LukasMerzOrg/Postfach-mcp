@@ -9,8 +9,10 @@ Postfach running as an Unraid container on the same Docker network. Files used:
 
 ## 0. Prerequisites
 
-- SWAG is running and working for another subdomain, attached to a **custom Docker network** (the linuxserver
-  guides call it `proxynet`; check yours under *Docker → swag → Network Type*).
+- SWAG is running and working for another subdomain. Check its network under *Docker → swag → Network Type*:
+  - **custom network** (the linuxserver guides call it `proxynet`): follow this guide as written.
+  - **`bridge`** (Unraid's default): container names don't resolve there. Use the *bridge variant* notes in
+    steps 3 and 4: Postfach on `bridge` with a mapped port, and the SWAG conf pointing at the Unraid IP.
 - DNS: `postfach.example.com` points at your public IP (or a CNAME to your DDNS name), and SWAG's certificate
   covers it — add `postfach` to SWAG's `SUBDOMAINS` variable unless you use a wildcard certificate, then restart
   SWAG and check its log for a successful renewal.
@@ -61,6 +63,10 @@ postfach* and fill in:
 | Owner username / password hash | from step 1 — paste the hash as is; the Unraid form does not need `$` escaping |
 | Allow sending | `false` for now |
 
+**Bridge variant:** set *Network Type* to `bridge` and fill in *LAN port* (under *Show more settings*) with a
+free host port, e.g. `9091`. Check that nothing else uses it. SWAG then reaches Postfach at
+`<unraid-ip>:9091`. The container name no longer matters.
+
 Keep the container name `postfach` — SWAG resolves it by that name. The template runs the container as
 `99:100` (nobody:users) and does not publish a port; SWAG talks to it over the Docker network on port 8080.
 
@@ -73,6 +79,16 @@ wget -O /mnt/user/appdata/swag/nginx/proxy-confs/postfach.subdomain.conf \
   https://raw.githubusercontent.com/LukasMerzOrg/Postfach-mcp/main/deploy/swag/postfach.subdomain.conf
 docker restart swag
 ```
+
+**Bridge variant:** edit the three `set $upstream_…` lines near the top of the conf, once for every location:
+
+```nginx
+set $upstream_app 192.168.1.10;   # your Unraid LAN IP: copy it from a working proxy conf
+set $upstream_port 9091;          # the LAN port from step 3
+```
+
+Check the hop before going public: `docker exec swag curl -s http://192.168.1.10:9091/healthz`. A wrong IP
+makes requests hang until Cloudflare (if you use it) returns 524.
 
 The config disables buffering for `/mcp` (MCP responses can be server-sent events) and keeps `/healthz` and
 `/readyz` LAN-only. `/setup` is reachable from outside but protected by the owner login (rate-limited); if you want it
@@ -125,7 +141,8 @@ and tick `mail.send`. Every send still needs a draft preview that you approve in
 
 | Symptom | Cause |
 |---|---|
-| SWAG returns 502 | Container not named `postfach`, or not on SWAG's network. `docker exec swag ping -c1 postfach` |
+| SWAG returns 502 | Container not named `postfach`, or not on SWAG's network. `docker exec swag ping -c1 postfach`. On the default `bridge` network names never resolve: use the bridge variant (Unraid IP + LAN port) |
+| Request hangs, Cloudflare 524 | Upstream IP/port in the SWAG conf is wrong or unreachable. Test with `docker exec swag curl http://<ip>:<port>/healthz` |
 | Certificate error for postfach.* | `postfach` missing from SWAG `SUBDOMAINS` / DNS not pointing at you |
 | claude.ai: "redirect URI not allowed" | Custom `POSTFACH_OAUTH_REDIRECT_ALLOWLIST` without the claude.ai callback |
 | Consent page says "form expired" | Opened over plain http or a different host than `Public URL`; cookies are `Secure` |

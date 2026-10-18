@@ -26,7 +26,7 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>SWAG (or another TLS reverse proxy) on the same custom Docker network. The network name above (proxynet) must match SWAG's.</Requires>
+  <Requires>SWAG (or another TLS reverse proxy). Either put Postfach on SWAG's custom Docker network (the default above, proxynet, must match), or, if SWAG runs on the default bridge network, set Network Type to bridge, map the LAN port and point the SWAG conf at the Unraid IP and that port.</Requires>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/postfach" Mode="rw" Description="SQLite database (accounts from /setup, audit, OAuth clients/tokens), cookie keys and an optional postfach.yaml. Back this up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/postfach</Config>
   <Config Name="Public URL" Target="POSTFACH_PUBLIC_URL" Default="" Mode="" Description="The HTTPS URL SWAG serves, without trailing slash, e.g. https://postfach.example.com. Used as OAuth issuer; the MCP endpoint is this URL + /mcp." Type="Variable" Display="always" Required="true" Mask="false">https://postfach.example.com</Config>
   <Config Name="Secret key" Target="POSTFACH_SECRET_KEY" Default="" Mode="" Description="32 random bytes, base64. Generate: docker run --rm ghcr.io/lukasmerzorg/postfach-mcp generate-key. Keep a copy outside the server: without it, encrypted secrets cannot be read." Type="Variable" Display="always" Required="true" Mask="true"></Config>
@@ -40,5 +40,5 @@
   <Config Name="Static API token scopes" Target="POSTFACH_API_TOKEN_SCOPES" Default="mail.read mail.organize mail.draft" Mode="" Description="Scopes of the static token." Type="Variable" Display="advanced" Required="false" Mask="false">mail.read mail.organize mail.draft</Config>
   <Config Name="Max sends per day" Target="POSTFACH_MAX_SENDS_PER_DAY" Default="30" Mode="" Description="Per account, rolling 24 hours." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
   <Config Name="Timezone" Target="TZ" Default="Europe/Zurich" Mode="" Description="Container timezone (logs only; mail dates keep their own offsets)." Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Zurich</Config>
-  <Config Name="LAN port (optional)" Target="8080" Default="" Mode="tcp" Description="Not needed with SWAG on the same network. Only map it for testing on the LAN; never forward it on your router." Type="Port" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="LAN port (optional)" Target="8080" Default="" Mode="tcp" Description="Required on the default bridge network: SWAG reaches Postfach at the Unraid IP and this port (e.g. 9091). Not needed when SWAG shares a custom network. Never forward it on your router." Type="Port" Display="advanced" Required="false" Mask="false"></Config>
 </Container>

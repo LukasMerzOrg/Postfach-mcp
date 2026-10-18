@@ -125,7 +125,7 @@ internal static class SetupPages
             {(pending is null ? string.Empty : $"<input type=\"hidden\" name=\"pending\" value=\"{E(pending)}\">")}
             <div class="grid">
             <label>Email address<input type="email" name="email" value="{E(f.Email)}" required></label>
-            <label>Account id <span class="muted">(used by Claude)</span><input type="text" name="id" value="{E(f.Id)}" pattern="[A-Za-z0-9._-]+" required{(f.IsNew ? string.Empty : " readonly")}></label>
+            <label>Account id <span class="muted">(used by Claude)</span><input type="text" name="id" value="{E(f.Id)}" pattern="[A-Za-z0-9._\-]+" required{(f.IsNew ? string.Empty : " readonly")}></label>
             <label>Label<input type="text" name="label" value="{E(f.Label)}" placeholder="Privat"></label>
             <label>Provider<select name="provider">{presetOptions}</select></label>
             </div>
