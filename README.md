@@ -52,7 +52,10 @@ docker run -d --name postfach -p 8080:8080 -v "$PWD/data:/data" \
   $IMG
 ```
 
-Put it behind TLS — [Unraid + SWAG guide](docs/deploy-unraid.md), or [`deploy/`](deploy/) for Caddy + Compose — then:
+Run the `hash-password` pipe in a POSIX shell, such as the Unraid terminal or Git Bash. Windows PowerShell can prepend a
+byte-order mark or re-encode non-ASCII characters on the way into the container, and the login then never matches.
+
+Put it behind TLS — [Unraid + SWAG guide](docs/deploy-unraid.md) (SWAG on a custom network or Unraid's default bridge), or [`deploy/`](deploy/) for Caddy + Compose — then:
 
 1. Open `https://postfach.example.com/setup`, sign in, enter an email address and follow the form: test, save.
    (Accounts can also be defined in `postfach.yaml`; see [configuration](docs/configuration.md).)
@@ -67,7 +70,7 @@ on the consent page.
 
 ## Documentation
 
-- [Deploying on Unraid behind SWAG](docs/deploy-unraid.md)
+- [Deploying on Unraid behind SWAG](docs/deploy-unraid.md): template, proxy conf, bridge or custom network
 - [Configuration](docs/configuration.md) — environment variables, `postfach.yaml`, secrets, CLI
 - [Providers](docs/providers.md) — Gmail, Microsoft 365, iCloud, Fastmail, Infomaniak, Dovecot
 - [Security](docs/security.md) — threat model, the three send gates, prompt-injection handling
