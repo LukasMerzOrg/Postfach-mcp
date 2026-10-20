@@ -25,7 +25,8 @@ allowlist, the From address must be a configured identity. Every send is recorde
   `hidden_text_removed`.
 - No tool fetches URLs, follows links or loads remote images.
 - `create_draft` adds `warnings[]` when a draft to an external address contains long encoded strings or long URL
-  query strings, quotes other messages in a new mail, or forwards a message to someone who was not on it.
+  query strings, quotes other messages in a new mail, attaches files taken from other messages, or forwards a message
+  to someone who was not on it. The draft preview lists every attachment by name and size.
 - `get_message` reports the receiving server's SPF/DKIM/DMARC verdict (topmost `Authentication-Results` only) and
   `sender_mismatch` when the display name claims a different domain than the address.
 

@@ -27,13 +27,17 @@ Claude search, read, triage and draft email in any IMAP mailbox, with optional s
 | `search_messages` | Structured IMAP search, newest first, cursor pagination | read |
 | `get_message` | Headers, clean text body, attachments, SPF/DKIM/DMARC, phishing hint | read |
 | `get_thread` | A conversation across Inbox, Sent and Archive, trimmed bodies | read |
-| `get_attachment` | Text from txt/csv/ics/html/pdf; metadata only for everything else | read |
+| `get_attachment` | Text from txt/csv/ics/html/pdf, images as viewable image content; metadata only for everything else | read |
 | `update_flags` | Read/unread, flag/unflag, keywords | organize |
 | `move_messages` | Move or archive | organize |
-| `create_draft` | New message, reply or forward into Drafts; returns preview + `confirm_token` | draft |
-| `update_draft` | Replace a draft; returns a new token | draft |
+| `create_draft` | New message, reply or forward into Drafts, with attachments; returns preview + `confirm_token` | draft |
+| `update_draft` | Replace a draft, add or remove attachments; returns a new token | draft |
 | `send_draft` | Send a draft via SMTP, copy to Sent | send |
 | `delete_messages` | Move to Trash (expunge only inside Trash) | delete |
+
+Draft attachments are either new files (`{filename, content_base64, mime_type?}`) or attachments of a message
+already in the mailbox (`{message_id, part}`, copied server-side so the bytes never pass through Claude). Up to 10
+per call and 20 MB per draft by default (`POSTFACH_MAX_ATTACHMENT_MB`); the preview lists each file with its size.
 
 Message ids are `account:folder:uidvalidity:uid`, so a reference that outlived a mailbox rebuild fails with
 `stale_id` instead of touching the wrong mail.

@@ -119,6 +119,104 @@ public class DraftBuilderTests
     }
 }
 
+public class DraftAttachmentTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 17, 10, 0, 0, TimeSpan.Zero);
+
+    private static MimeMessage NewDraft() => DraftBuilder.Build(TestAccounts.Alice(), new DraftRequest
+    {
+        Account = "private",
+        To = ["bob@example.org"],
+        Subject = "Unterlagen",
+        Body = "Im Anhang.",
+    }, null, false, Now);
+
+    private static string Base64(string text) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
+
+    [Fact]
+    public void Adds_base64_attachment_and_wraps_body_in_mixed()
+    {
+        var message = NewDraft();
+        DraftBuilder.AddAttachments(message, [DraftBuilder.CreateAttachment("C:\\temp\\offerte.pdf", null, Base64("%PDF-1.4 test"))]);
+
+        var mixed = Assert.IsType<Multipart>(message.Body);
+        Assert.True(mixed.ContentType.IsMimeType("multipart", "mixed"));
+        Assert.IsType<MultipartAlternative>(mixed[0]);
+        var info = Assert.Single(DraftBuilder.DescribeAttachments(message));
+        Assert.Equal(new DraftAttachmentInfo("offerte.pdf", "application/pdf", 13), info);
+        Assert.Contains("Im Anhang.", message.TextBody);
+    }
+
+    [Fact]
+    public void Accepts_data_urls_and_explicit_mime_types()
+    {
+        var part = DraftBuilder.CreateAttachment("notes", null, "data:text/plain;base64," + Base64("hallo"));
+        Assert.Equal("text/plain", part.ContentType.MimeType);
+        Assert.Equal("text/csv", DraftBuilder.CreateAttachment("liste.txt", "text/csv", Base64("a,b")).ContentType.MimeType);
+    }
+
+    [Theory]
+    [InlineData(null, "aGFsbG8=", null)]
+    [InlineData("a.txt", "not base64!", null)]
+    [InlineData("a.txt", "aGFsbG8=", "multipart/mixed")]
+    [InlineData("../", "aGFsbG8=", null)]
+    public void Rejects_bad_attachments(string? filename, string content, string? mime)
+    {
+        var ex = Assert.Throws<PostfachException>(() => DraftBuilder.CreateAttachment(filename, mime, content));
+        Assert.Equal(ErrorCodes.InvalidArgument, ex.Code);
+    }
+
+    [Fact]
+    public void Removes_attachments_by_name_and_unwraps()
+    {
+        var message = NewDraft();
+        DraftBuilder.AddAttachments(message, [DraftBuilder.CreateAttachment("a.txt", null, Base64("a")), DraftBuilder.CreateAttachment("b.txt", null, Base64("b"))]);
+
+        DraftBuilder.RemoveAttachments(message, ["A.TXT"]);
+        Assert.Equal(["b.txt"], DraftBuilder.DescribeAttachments(message).Select(a => a.Filename));
+
+        DraftBuilder.RemoveAttachments(message, ["b.txt"]);
+        Assert.Empty(message.Attachments);
+        Assert.IsType<MultipartAlternative>(message.Body);
+
+        var ex = Assert.Throws<PostfachException>(() => DraftBuilder.RemoveAttachments(message, ["missing.pdf"]));
+        Assert.Equal(ErrorCodes.NotFound, ex.Code);
+    }
+
+    [Fact]
+    public void Carrying_attachments_into_a_rebuilt_draft_skips_duplicates()
+    {
+        var old = DraftBuilder.Build(TestAccounts.Alice(), new DraftRequest { Account = "private", To = ["bob@example.org"], Body = "FYI", ForwardOf = "x" },
+            Corpus.Load("nested-multipart.eml"), true, Now);
+        DraftBuilder.AddAttachments(old, [DraftBuilder.CreateAttachment("extra.txt", null, Base64("x"))]);
+
+        var rebuilt = DraftBuilder.Build(TestAccounts.Alice(), new DraftRequest { Account = "private", To = ["bob@example.org"], Body = "Neu", ForwardOf = "x" },
+            Corpus.Load("nested-multipart.eml"), true, Now);
+        DraftBuilder.CarryAttachments(old, rebuilt);
+
+        Assert.Equal(["steuer.pdf", "archive.zip", "extra.txt"], DraftBuilder.DescribeAttachments(rebuilt).Select(a => a.Filename));
+    }
+
+    [Fact]
+    public void Content_hash_covers_attachment_bytes_and_attached_messages()
+    {
+        var message = NewDraft();
+        DraftBuilder.AddAttachments(message, [DraftBuilder.CreateAttachment("a.txt", null, Base64("eins"))]);
+        var withFile = ConfirmTokens.ContentHash(message);
+
+        var swapped = NewDraft();
+        DraftBuilder.AddAttachments(swapped, [DraftBuilder.CreateAttachment("a.txt", null, Base64("zwei"))]);
+        Assert.NotEqual(withFile, ConfirmTokens.ContentHash(swapped));
+
+        static MessagePart Eml(string file) => new() { Message = Corpus.Load(file), ContentDisposition = new ContentDisposition(ContentDisposition.Attachment) };
+        var withEml = NewDraft();
+        DraftBuilder.AddAttachments(withEml, [Eml("thread-1.eml")]);
+        var otherEml = NewDraft();
+        DraftBuilder.AddAttachments(otherEml, [Eml("thread-2.eml")]);
+        Assert.NotEqual(ConfirmTokens.ContentHash(withEml), ConfirmTokens.ContentHash(otherEml));
+    }
+}
+
 public class ConfirmTokenTests
 {
     private static readonly MessageRef Draft = new("private", "Drafts", 7, 42);
@@ -232,5 +330,12 @@ public class ExfiltrationGuardTests
         var original = Corpus.Load("thread-1.eml");
         Assert.Contains(ExfiltrationGuard.Check(TestAccounts.Alice(), Draft("x@evil.example", "fyi"), "fyi", true, original), w => w.Contains("not on it"));
         Assert.Empty(ExfiltrationGuard.Check(TestAccounts.Alice(), Draft("bob@example.org", "ok"), "ok", true, original));
+    }
+
+    [Fact]
+    public void Warns_when_mailbox_attachments_go_external()
+    {
+        Assert.Contains(ExfiltrationGuard.Check(TestAccounts.Alice(), Draft("x@evil.example", "ok"), "ok", false, null, ["lohn.pdf"]), w => w.Contains("lohn.pdf"));
+        Assert.Empty(ExfiltrationGuard.Check(TestAccounts.Alice(), Draft("me@verein.example", "ok"), "ok", false, null, ["lohn.pdf"]));
     }
 }

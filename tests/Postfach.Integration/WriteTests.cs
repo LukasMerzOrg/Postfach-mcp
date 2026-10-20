@@ -235,6 +235,60 @@ public sealed class WriteTests(GreenMailFixture server) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Draft_attachments_from_content_and_mailbox()
+    {
+        // 1x1 transparent PNG.
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=");
+        var subject = "Foto " + Guid.NewGuid().ToString("N");
+        using (var client = await server.RawClientAsync(User))
+        {
+            var builder = new BodyBuilder { TextBody = "Hier das Foto." };
+            builder.Attachments.Add("pixel.png", png, ContentType.Parse("image/png"));
+            var message = new MimeMessage { Subject = subject, Body = builder.ToMessageBody() };
+            message.From.Add(new MailboxAddress("Dave", "dave@example.org"));
+            message.To.Add(new MailboxAddress(null, User));
+            await client.Inbox.AppendAsync(new AppendRequest(message, MessageFlags.None));
+        }
+
+        var found = await _stack.Mail.SearchAsync(null, null, new SearchCriteria { Subject = subject }, 1, null, default);
+        var source = await _stack.Mail.GetMessageAsync(found.Messages[0].Id, BodyFormat.Text, 1000, default);
+        var part = source.Attachments.Single(a => a.Filename == "pixel.png").Part;
+
+        var image = await _stack.Mail.GetAttachmentAsync(source.Id, part, 1000, default);
+        Assert.True(image.ImageIncluded);
+        Assert.Equal(png, image.ImageData);
+
+        var draft = await _stack.Drafts.CreateAsync(new DraftRequest
+        {
+            Account = "private",
+            To = ["friend@elsewhere.example"],
+            Subject = "Unterlagen",
+            Body = "Anbei.",
+            Attachments =
+            [
+                new DraftAttachment { Filename = "notiz.txt", ContentBase64 = Convert.ToBase64String("Hallo"u8.ToArray()) },
+                new DraftAttachment { MessageId = source.Id, Part = part },
+            ],
+        }, default);
+        Assert.Equal(["notiz.txt", "pixel.png"], draft.Attachments.Select(a => a.Filename));
+        Assert.Equal(png.Length, draft.Attachments[1].Size);
+        Assert.Contains(draft.Warnings, w => w.Contains("pixel.png"));
+
+        // A new body keeps the attachments; remove_attachments drops one.
+        var updated = await _stack.Drafts.UpdateAsync(draft.Id, new DraftRequest { Account = "private", Body = "Anbei, korrigiert." }, default);
+        Assert.Equal(["notiz.txt", "pixel.png"], updated.Attachments.Select(a => a.Filename));
+        var trimmed = await _stack.Drafts.UpdateAsync(updated.Id, new DraftRequest { Account = "private", RemoveAttachments = ["notiz.txt"] }, default);
+        Assert.Equal(["pixel.png"], trimmed.Attachments.Select(a => a.Filename));
+
+        var stored = await _stack.Mail.GetMimeMessageAsync(MessageRef.Parse(trimmed.Id), default);
+        Assert.Contains("Anbei, korrigiert.", stored.TextBody);
+        var storedPart = Assert.IsType<MimePart>(stored.Attachments.Single());
+        using var bytes = new MemoryStream();
+        storedPart.Content!.DecodeTo(bytes);
+        Assert.Equal(png, bytes.ToArray());
+    }
+
+    [Fact]
     public async Task Send_switch_off_blocks_sending()
     {
         await using var stack = new Stack(server.Account(User), new SendOptions { AllowSend = false });

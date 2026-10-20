@@ -13,6 +13,9 @@ public sealed class SendOptions
 
     public int MaxSendsPerDay { get; init; } = 30;
 
+    /// <summary>Total decoded size of a draft's attachments when files are added through Postfach.</summary>
+    public long MaxAttachmentBytes { get; init; } = 20 * 1024 * 1024;
+
     /// <summary>Recipient allowlist patterns such as <c>*@family.ch</c> or <c>boss@work.ch</c>. Empty = no restriction.</summary>
     public IReadOnlyList<string> Allowlist { get; init; } = [];
 }
@@ -68,7 +71,8 @@ public static class SendPolicy
 /// <summary>Heuristics against a prompt-injected Claude smuggling mail content out through a draft.</summary>
 public static partial class ExfiltrationGuard
 {
-    public static IReadOnlyList<string> Check(MailAccount account, MimeMessage draft, string? newBody, bool isReplyOrForward, MimeMessage? original)
+    public static IReadOnlyList<string> Check(
+        MailAccount account, MimeMessage draft, string? newBody, bool isReplyOrForward, MimeMessage? original, IReadOnlyList<string>? attachedFromMailbox = null)
     {
         var warnings = new List<string>();
         var ownDomains = account.Identities.Select(i => Domain(i.Email))
@@ -94,6 +98,11 @@ public static partial class ExfiltrationGuard
         if (!isReplyOrForward && QuoteMarker().IsMatch(body))
         {
             warnings.Add("The draft goes to an external address and quotes content from other messages. Confirm that the user wants this content shared.");
+        }
+
+        if (attachedFromMailbox is { Count: > 0 })
+        {
+            warnings.Add($"The draft goes to an external address and attaches file(s) from other messages: {string.Join(", ", attachedFromMailbox)}. Confirm that the user wants them shared.");
         }
 
         if (isReplyOrForward && original is not null)

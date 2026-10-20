@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using MailKit;
 using Microsoft.AspNetCore.Mvc.Testing;
+using MimeKit;
 
 namespace Postfach.Integration;
 
@@ -170,6 +172,55 @@ public sealed class McpEndpointTests : IAsyncLifetime
         Assert.False(draftError);
         Assert.False(draft.GetProperty("send_enabled").GetBoolean());
         Assert.NotEmpty(draft.GetProperty("warnings").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Attachments_round_trip_over_mcp()
+    {
+        var tools = (await RpcAsync("tools/list")).GetProperty("tools").EnumerateArray().ToList();
+        var schema = tools.Single(t => t.GetProperty("name").GetString() == "create_draft").GetProperty("inputSchema");
+        var item = schema.GetProperty("properties").GetProperty("attachments").GetProperty("items").GetProperty("properties");
+        Assert.True(item.TryGetProperty("content_base64", out _));
+        Assert.True(item.TryGetProperty("message_id", out _));
+
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=");
+        var subject = "Bild " + Guid.NewGuid().ToString("N");
+        using (var client = await _server.RawClientAsync("alice@example.com"))
+        {
+            var builder = new BodyBuilder { TextBody = "Siehe Bild." };
+            builder.Attachments.Add("pixel.png", png, ContentType.Parse("image/png"));
+            var message = new MimeMessage { Subject = subject, Body = builder.ToMessageBody() };
+            message.From.Add(new MailboxAddress("Dave", "dave@example.org"));
+            message.To.Add(new MailboxAddress(null, "alice@example.com"));
+            await client.Inbox.AppendAsync(new AppendRequest(message, MessageFlags.None));
+        }
+
+        var (_, search) = await CallAsync("search_messages", new { subject });
+        var id = search.GetProperty("messages")[0].GetProperty("id").GetString();
+        var (_, detail) = await CallAsync("get_message", new { id });
+        var part = detail.GetProperty("attachments")[0].GetProperty("part").GetString();
+
+        var result = await RpcAsync("tools/call", new { name = "get_attachment", arguments = new { id, part } });
+        var content = result.GetProperty("content");
+        Assert.Equal("image", content[1].GetProperty("type").GetString());
+        Assert.Equal("image/png", content[1].GetProperty("mimeType").GetString());
+        Assert.Equal(png, Convert.FromBase64String(content[1].GetProperty("data").GetString()!));
+
+        var (draftError, draft) = await CallAsync("create_draft", new
+        {
+            account = "private",
+            to = new[] { "alice@example.com" },
+            subject = "Mit Anhang",
+            body = "Anbei.",
+            attachments = new object[]
+            {
+                new { filename = "liste.csv", content_base64 = Convert.ToBase64String("a;b\n1;2"u8.ToArray()) },
+                new { message_id = id, part },
+            },
+        });
+        Assert.False(draftError, draft.ToString());
+        Assert.Equal(["liste.csv", "pixel.png"], draft.GetProperty("attachments").EnumerateArray().Select(a => a.GetProperty("filename").GetString()));
+        Assert.Equal("text/csv", draft.GetProperty("attachments")[0].GetProperty("mime").GetString());
     }
 
     [Fact]
