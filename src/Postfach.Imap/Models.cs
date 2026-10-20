@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Postfach.Imap;
 
 public sealed record EmailAddress(string? Name, string Email);
@@ -131,6 +133,13 @@ public sealed record AttachmentResult
     public string? Reason { get; init; }
 
     public UntrustedContent? UntrustedContent { get; init; }
+
+    /// <summary>True when the attachment is an image returned as an image content block next to this JSON.</summary>
+    public bool? ImageIncluded { get; init; }
+
+    /// <summary>Decoded image bytes; sent as MCP image content, never serialized into the JSON.</summary>
+    [JsonIgnore]
+    public byte[]? ImageData { get; init; }
 }
 
 public sealed record WriteResult

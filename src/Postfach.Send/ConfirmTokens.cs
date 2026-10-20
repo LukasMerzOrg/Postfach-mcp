@@ -102,11 +102,22 @@ public sealed class ConfirmTokens(byte[] key, TimeProvider time)
         Add(message.Subject);
         Add(Normalize(message.TextBody));
         Add(Normalize(message.HtmlBody));
-        foreach (var attachment in message.Attachments.OfType<MimePart>())
+        foreach (var attachment in message.Attachments)
         {
-            Add(attachment.FileName);
             using var stream = new MemoryStream();
-            attachment.Content?.DecodeTo(stream);
+            switch (attachment)
+            {
+                case MimePart part:
+                    Add(part.FileName);
+                    part.Content?.DecodeTo(stream);
+                    break;
+                case MessagePart { Message: { } inner }:
+                    // Attached messages (.eml) count too, or one could be swapped without invalidating the token.
+                    Add(attachment.ContentDisposition?.FileName ?? attachment.ContentType.Name);
+                    inner.WriteTo(stream);
+                    break;
+            }
+
             Add(Convert.ToHexString(SHA256.HashData(stream.ToArray())));
         }
 

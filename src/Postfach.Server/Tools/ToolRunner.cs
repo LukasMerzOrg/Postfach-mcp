@@ -25,7 +25,12 @@ public sealed class ToolRunner(IHttpContextAccessor http, IAuditLog audit, ILogg
     public bool HasScope(string scope) =>
         http.HttpContext?.User.Claims.Any(c => c.Type == "scope" && c.Value == scope) ?? false;
 
-    public async Task<CallToolResult> RunAsync<T>(string tool, string scope, Func<Task<T>> action, Func<T, (string? Account, string Detail)>? auditWith = null)
+    public async Task<CallToolResult> RunAsync<T>(
+        string tool,
+        string scope,
+        Func<Task<T>> action,
+        Func<T, (string? Account, string Detail)>? auditWith = null,
+        Func<T, IEnumerable<ContentBlock>>? extraContent = null)
     {
         try
         {
@@ -44,7 +49,7 @@ public sealed class ToolRunner(IHttpContextAccessor http, IAuditLog audit, ILogg
 
             return new CallToolResult
             {
-                Content = [new TextContentBlock { Text = JsonSerializer.Serialize(result, Json) }],
+                Content = [new TextContentBlock { Text = JsonSerializer.Serialize(result, Json) }, .. extraContent?.Invoke(result) ?? []],
             };
         }
         catch (PostfachException ex)

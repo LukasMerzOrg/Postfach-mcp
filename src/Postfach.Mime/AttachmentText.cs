@@ -11,6 +11,9 @@ public static class AttachmentText
 {
     public const long MaxExtractBytes = 10 * 1024 * 1024;
 
+    /// <summary>Images up to this size are returned as MCP image content (larger ones exceed what clients accept).</summary>
+    public const long MaxImageBytes = 5 * 1024 * 1024;
+
     private static readonly HashSet<string> BlockedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         // executables and scripts
@@ -33,6 +36,23 @@ public static class AttachmentText
         return mimeType is "application/x-msdownload" or "application/x-executable" or "application/zip"
             or "application/x-zip-compressed" or "application/x-rar-compressed" or "application/x-7z-compressed"
             or "application/vnd.ms-word.document.macroenabled.12" or "application/vnd.ms-excel.sheet.macroenabled.12";
+    }
+
+    /// <summary>Raster formats Claude can look at.</summary>
+    public static bool IsViewableImage(string mimeType) =>
+        mimeType is "image/png" or "image/jpeg" or "image/jpg" or "image/gif" or "image/webp";
+
+    /// <summary>Decoded bytes of a leaf part; null for multiparts and attached messages.</summary>
+    public static byte[]? Decode(MimeEntity entity)
+    {
+        if (entity is not MimePart { Content: { } content })
+        {
+            return null;
+        }
+
+        using var stream = new MemoryStream();
+        content.DecodeTo(stream);
+        return stream.ToArray();
     }
 
     public static AttachmentExtraction Extract(MimeEntity entity, long size, int maxChars)

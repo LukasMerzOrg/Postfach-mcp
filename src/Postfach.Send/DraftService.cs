@@ -24,7 +24,7 @@ public sealed record DraftPreview
     /// <summary>First 500 characters of the text body.</summary>
     public string? Preview { get; init; }
 
-    public int Attachments { get; init; }
+    public IReadOnlyList<DraftAttachmentInfo> Attachments { get; init; } = [];
 
     public bool SendEnabled { get; init; }
 
@@ -57,6 +57,8 @@ public sealed class DraftService(
     TimeProvider time,
     ILogger<DraftService> logger)
 {
+    private const int MaxAttachmentsPerCall = 10;
+
     private const string ReviewInstructions =
         "Show the user the recipients, subject and preview above and wait for their explicit approval before calling send_draft with this confirm_token. "
         + "The draft is also visible in the Drafts folder of their own mail client.";
@@ -81,7 +83,8 @@ public sealed class DraftService(
 
         var (original, isForward) = await LoadOriginalAsync(account, request, ct);
         var message = DraftBuilder.Build(account, request, original, isForward, time.GetUtcNow());
-        var warnings = ExfiltrationGuard.Check(account, message, request.Body, original is not null, original).ToList();
+        var fromMailbox = await AttachAsync(account, message, request.Attachments, ct);
+        var warnings = ExfiltrationGuard.Check(account, message, request.Body, original is not null, original, fromMailbox).ToList();
         var id = await mail.AppendDraftAsync(account.Id, message, ct);
         return Preview(id, message, warnings);
     }
@@ -107,6 +110,7 @@ public sealed class DraftService(
                 Identity = changes.Identity ?? existing.From.Mailboxes.FirstOrDefault()?.Address,
             };
             updated = DraftBuilder.Build(account, merged, original, isForward, time.GetUtcNow());
+            DraftBuilder.CarryAttachments(existing, updated);
             if (original is null)
             {
                 // Keep the reply headers of the draft being replaced.
@@ -122,7 +126,9 @@ public sealed class DraftService(
             updated = DraftBuilder.WithHeaders(existing, account, changes, time.GetUtcNow());
         }
 
-        var warnings = ExfiltrationGuard.Check(account, updated, changes.Body, original is not null || updated.InReplyTo is not null, original).ToList();
+        DraftBuilder.RemoveAttachments(updated, changes.RemoveAttachments);
+        var fromMailbox = await AttachAsync(account, updated, changes.Attachments, ct);
+        var warnings = ExfiltrationGuard.Check(account, updated, changes.Body, original is not null || updated.InReplyTo is not null, original, fromMailbox).ToList();
         var newId = await mail.AppendDraftAsync(account.Id, updated, ct);
         try
         {
@@ -249,6 +255,76 @@ public sealed class DraftService(
         return !await mail.SupportsGmailExtensionsAsync(account.Id, ct);
     }
 
+    /// <summary>Adds the requested files to the draft; returns the names of those taken from other messages.</summary>
+    private async Task<IReadOnlyList<string>> AttachAsync(MailAccount account, MimeMessage message, IReadOnlyList<DraftAttachment> attachments, CancellationToken ct)
+    {
+        if (attachments.Count == 0)
+        {
+            return [];
+        }
+
+        if (attachments.Count > MaxAttachmentsPerCall)
+        {
+            throw new PostfachException(ErrorCodes.InvalidArgument, $"At most {MaxAttachmentsPerCall} attachments per call.", "Add more with update_draft.");
+        }
+
+        var parts = new List<MimeEntity>();
+        var fromMailbox = new List<string>();
+        foreach (var attachment in attachments)
+        {
+            if (attachment.ContentBase64 is not null && attachment.MessageId is not null)
+            {
+                throw new PostfachException(ErrorCodes.InvalidArgument, "An attachment takes either content_base64 or message_id + part, not both.");
+            }
+
+            if (attachment.ContentBase64 is not null)
+            {
+                parts.Add(DraftBuilder.CreateAttachment(attachment.Filename, attachment.MimeType, attachment.ContentBase64));
+                continue;
+            }
+
+            if (attachment.MessageId is null || string.IsNullOrWhiteSpace(attachment.Part))
+            {
+                throw new PostfachException(ErrorCodes.InvalidArgument, "An attachment needs content_base64 (with filename) or message_id + part.",
+                    "Parts come from get_message's attachments list.");
+            }
+
+            var source = MessageRef.Parse(attachment.MessageId);
+            if (!string.Equals(source.Account, account.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new PostfachException(ErrorCodes.InvalidArgument, "Attachments can only be taken from messages of the draft's account.");
+            }
+
+            var entity = await mail.GetAttachmentEntityAsync(source, attachment.Part, options.MaxAttachmentBytes, ct);
+            if (entity is Multipart)
+            {
+                throw new PostfachException(ErrorCodes.InvalidArgument, $"Part '{attachment.Part}' is not an attachment.", "Use a part from get_message's attachments list.");
+            }
+
+            // Inline images become regular attachments; a filename in the request renames the file.
+            entity.ContentDisposition ??= new ContentDisposition(ContentDisposition.Attachment);
+            entity.ContentDisposition.Disposition = ContentDisposition.Attachment;
+            if (!string.IsNullOrWhiteSpace(attachment.Filename))
+            {
+                entity.ContentDisposition.FileName = attachment.Filename.Trim();
+            }
+
+            parts.Add(entity);
+            fromMailbox.Add(DraftBuilder.FileNameOf(entity) ?? $"part {attachment.Part}");
+        }
+
+        DraftBuilder.AddAttachments(message, parts);
+        var total = DraftBuilder.TotalAttachmentSize(message);
+        if (total > options.MaxAttachmentBytes)
+        {
+            throw new PostfachException(ErrorCodes.InvalidArgument,
+                $"The draft's attachments total {total / (1024.0 * 1024):0.#} MB; the limit is {options.MaxAttachmentBytes / (1024 * 1024)} MB.",
+                "Attach fewer or smaller files; the operator can raise POSTFACH_MAX_ATTACHMENT_MB.");
+        }
+
+        return fromMailbox;
+    }
+
     private async Task<(MimeMessage? Original, bool IsForward)> LoadOriginalAsync(MailAccount account, DraftRequest request, CancellationToken ct)
     {
         var sourceId = request.InReplyTo ?? request.ForwardOf;
@@ -288,7 +364,7 @@ public sealed class DraftService(
             Cc = message.Cc.Mailboxes.Select(m => m.ToString()).ToList(),
             Subject = message.Subject,
             Preview = preview,
-            Attachments = message.Attachments.Count(),
+            Attachments = DraftBuilder.DescribeAttachments(message),
             SendEnabled = options.AllowSend,
             Warnings = allWarnings,
             Instructions = options.AllowSend

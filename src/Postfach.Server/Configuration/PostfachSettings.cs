@@ -52,6 +52,7 @@ public sealed class PostfachSettings
                 MaxRecipients = int.TryParse(env("POSTFACH_MAX_RECIPIENTS"), out var mr) && mr > 0 ? mr : 20,
                 MaxSendsPerDay = int.TryParse(env("POSTFACH_MAX_SENDS_PER_DAY"), out var ms) && ms > 0 ? ms : 30,
                 Allowlist = SplitList(env("POSTFACH_SEND_ALLOWLIST")),
+                MaxAttachmentBytes = (int.TryParse(env("POSTFACH_MAX_ATTACHMENT_MB"), out var mb) && mb > 0 ? mb : 20) * 1024L * 1024,
             },
         };
     }

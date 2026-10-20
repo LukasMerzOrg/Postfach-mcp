@@ -541,10 +541,48 @@ public sealed partial class MailService
 
             var entity = await GetPartAsync(folder, summary, bodyPart, ct)
                 ?? throw new PostfachException(ErrorCodes.NotFound, $"Part '{part}' not found in this message.");
+            if (AttachmentText.IsViewableImage(mime))
+            {
+                if (bodyPart.Octets * 3 / 4 > AttachmentText.MaxImageBytes)
+                {
+                    return result with { Reason = "too_large" };
+                }
+
+                var image = AttachmentText.Decode(entity);
+                return image is null ? result with { Reason = "unsupported_type" } : result with { ImageIncluded = true, ImageData = image };
+            }
+
             var extraction = AttachmentText.Extract(entity, bodyPart.Octets * 3 / 4, maxChars);
             return extraction.Text is null
                 ? result with { Reason = extraction.Reason }
                 : result with { UntrustedContent = new UntrustedContent { Text = extraction.Text, Truncated = extraction.Truncated } };
+        }, ct);
+    }
+
+    /// <summary>Downloads one attachment part as a MIME entity, e.g. to attach it to a draft.</summary>
+    public async Task<MimeEntity> GetAttachmentEntityAsync(MessageRef reference, string part, long maxBytes, CancellationToken ct)
+    {
+        var account = _accounts.Get(reference.Account);
+        if (string.IsNullOrWhiteSpace(part))
+        {
+            throw new PostfachException(ErrorCodes.InvalidArgument, "part is required.", "Use a part from get_message's attachments list.");
+        }
+
+        return await WithClientAsync(account, retryable: true, async client =>
+        {
+            var entry = await ResolveFolderAsync(account, client, reference.Folder, FolderRole.Inbox, ct);
+            var folder = await OpenAsync(client, entry.FullName, FolderAccess.ReadOnly, ct);
+            EnsureValidity(folder, reference);
+            var summary = await FetchOneAsync(client, folder, reference, ct);
+            var bodyPart = summary.BodyParts.FirstOrDefault(p => p.PartSpecifier == part.Trim())
+                ?? throw new PostfachException(ErrorCodes.NotFound, $"Part '{part}' not found in this message.", "Use a part from get_message's attachments list.");
+            if (bodyPart.Octets * 3 / 4 > maxBytes)
+            {
+                throw new PostfachException(ErrorCodes.InvalidArgument, $"Part '{part}' is larger than the {maxBytes / (1024 * 1024)} MB attachment limit.");
+            }
+
+            return await GetPartAsync(folder, summary, bodyPart, ct)
+                ?? throw new PostfachException(ErrorCodes.NotFound, $"Part '{part}' not found in this message.");
         }, ct);
     }
 

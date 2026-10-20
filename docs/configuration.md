@@ -41,6 +41,7 @@ Removing an account only removes it from Postfach; the mailbox is untouched.
 | `POSTFACH_ALLOW_SEND` | `false` | Server-side send switch. Overrides any granted scope. |
 | `POSTFACH_SEND_ALLOWLIST` | — | Comma-separated recipient patterns, e.g. `*@family.ch,boss@work.ch`. |
 | `POSTFACH_MAX_RECIPIENTS` | `20` | Per message (To + Cc + Bcc). |
+| `POSTFACH_MAX_ATTACHMENT_MB` | `20` | Total attachment size per draft when files are added with `create_draft` / `update_draft`. Base64 adds a third, so values above ~22 also need a larger request-body limit in front of Postfach. |
 | `POSTFACH_MAX_SENDS_PER_DAY` | `30` | Per account, rolling 24 h. `max_sends_per_day` in the account overrides it. |
 | `POSTFACH_ALLOWED_ORIGINS` | — | Extra allowed browser origins (`https://claude.ai` and `https://claude.com` are always allowed). |
 | `POSTFACH_TRUSTED_PROXIES` | loopback + `10/8`, `172.16/12`, `192.168/16` | CIDRs of reverse proxies whose `X-Forwarded-For`/`-Proto` are honoured (one hop). |
